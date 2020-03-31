@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -23,6 +23,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 //= INCLUDES ==================
 #include <string>
+#include <utility>
 #include <vector>
 #include <memory>
 #include "RHI/RHI_Definition.h"
@@ -30,6 +31,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 enum Icon_Type
 {
+    Icon_NotAssigned,
 	Icon_Component_Options,
 	Icon_Component_AudioListener,
 	Icon_Component_AudioSource,
@@ -41,7 +43,10 @@ enum Icon_Type
 	Icon_Component_MeshCollider,
 	Icon_Component_Renderable,
 	Icon_Component_RigidBody,
+    Icon_Component_SoftBody,
 	Icon_Component_Script,
+    Icon_Component_Terrain,
+    Icon_Component_Environment,
 	Icon_Component_Transform,
 	Icon_Console_Info,
 	Icon_Console_Warning,
@@ -73,12 +78,12 @@ struct Thumbnail
 	Thumbnail() = default;
 	Thumbnail(Icon_Type type, std::shared_ptr<Spartan::RHI_Texture> texture, const std::string& filePath)
 	{
-		this->type = type;
-		this->texture = texture;
-		this->filePath = filePath;
+		this->type      = type;
+		this->texture   = std::move(texture);
+		this->filePath  = filePath;
 	}
 
-	Icon_Type type;
+    Icon_Type type = Icon_NotAssigned;
 	std::shared_ptr<Spartan::RHI_Texture> texture;
 	std::string filePath;
 };

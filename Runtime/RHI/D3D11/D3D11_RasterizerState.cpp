@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -41,11 +41,11 @@ namespace Spartan
 		const shared_ptr<RHI_Device>& rhi_device,
 		const RHI_Cull_Mode cull_mode,
 		const RHI_Fill_Mode fill_mode,
-        const bool front_counter_clock_wise,
 		const bool depth_clip_enabled,
 		const bool scissor_enabled,
 		const bool multi_sample_enabled,
-		const bool antialised_line_enabled)
+		const bool antialised_line_enabled,
+        const float line_width /*= 1.0f */)
 	{
 		if (!rhi_device)
 		{
@@ -62,17 +62,17 @@ namespace Spartan
 		// Save properties
 		m_cull_mode					= cull_mode;
 		m_fill_mode					= fill_mode;
-        m_front_counter_clock_wise  = front_counter_clock_wise;
 		m_depth_clip_enabled		= depth_clip_enabled;
 		m_scissor_enabled			= scissor_enabled;
 		m_multi_sample_enabled		= multi_sample_enabled;
 		m_antialised_line_enabled	= antialised_line_enabled;
+        m_line_width                = line_width;
 
 		// Create rasterizer description
 		D3D11_RASTERIZER_DESC desc;
 		desc.CullMode				= d3d11_cull_mode[cull_mode];
 		desc.FillMode				= d3d11_polygon_mode[fill_mode];	
-		desc.FrontCounterClockwise	= front_counter_clock_wise;
+		desc.FrontCounterClockwise	= FALSE;
 		desc.DepthBias				= 0;
 		desc.DepthBiasClamp			= 0.0f;
 		desc.SlopeScaledDepthBias	= 0.0f;
@@ -93,14 +93,14 @@ namespace Spartan
 		}
 		else
 		{
-			LOGF_ERROR("Failed to create the rasterizer state, %s.", D3D11_Common::dxgi_error_to_string(result));
+			LOG_ERROR("Failed to create the rasterizer state, %s.", d3d11_common::dxgi_error_to_string(result));
 			m_initialized = false;
 		}
 	}
 
 	RHI_RasterizerState::~RHI_RasterizerState()
 	{
-		safe_release(static_cast<ID3D11RasterizerState*>(m_buffer));
+        safe_release(*reinterpret_cast<ID3D11RasterizerState**>(&m_buffer));
 	}
 }
 #endif

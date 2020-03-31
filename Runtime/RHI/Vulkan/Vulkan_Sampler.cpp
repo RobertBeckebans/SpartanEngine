@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -20,15 +20,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
 //= IMPLEMENTATION ===============
-#include "../RHI_Implementation.h"
 #ifdef API_GRAPHICS_VULKAN
+#include "../RHI_Implementation.h"
 //================================
 
 //= INCLUDES ========================
 #include "../RHI_Sampler.h"
 #include "../RHI_Device.h"
 #include "../../Logging/Log.h"
-#include "../../Core/Settings.h"
 #include "../../Core/Context.h"
 #include "../../Rendering/Renderer.h"
 //===================================
@@ -72,10 +71,13 @@ namespace Spartan
 		sampler_info.addressModeV			= vulkan_sampler_address_mode[sampler_address_mode];
 		sampler_info.addressModeW			= vulkan_sampler_address_mode[sampler_address_mode];
 		sampler_info.anisotropyEnable		= anisotropy_enabled;
-		sampler_info.maxAnisotropy			= static_cast<float>(m_rhi_device->GetContext()->GetSubsystem<Renderer>()->GetAnisotropy());
+        sampler_info.maxAnisotropy          = m_rhi_device->GetContext()->GetSubsystem<Renderer>()->GetOptionValue<float>(Option_Value_Anisotropy);
 		sampler_info.compareEnable			= comparison_enabled ? VK_TRUE : VK_FALSE;
 		sampler_info.compareOp				= vulkan_compare_operator[comparison_function];
 		sampler_info.borderColor			= VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+        sampler_info.mipLodBias             = 0.0f;
+        sampler_info.minLod                 = 0.0f;
+        sampler_info.maxLod                 = FLT_MAX;
 	
 		if (vkCreateSampler(rhi_device->GetContextRhi()->device, &sampler_info, nullptr, reinterpret_cast<VkSampler*>(&m_resource)) != VK_SUCCESS)
 		{

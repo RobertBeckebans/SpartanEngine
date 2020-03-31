@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,24 +19,23 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ====================================
+//= INCLUDES ============================
 #include "IResource.h"
 #include "../Audio/AudioClip.h"
 #include "../Rendering/Model.h"
 #include "../Rendering/Font/Font.h"
-#include "../Rendering/Shaders/ShaderVariation.h"
 #include "../Rendering/Animation.h"
 #include "../RHI/RHI_Texture.h"
 #include "../RHI/RHI_Texture2D.h"
 #include "../RHI/RHI_TextureCube.h"
-//===============================================
+//=======================================
 
 //= NAMESPACES ==========
 using namespace std;
 using namespace Spartan;
 //=======================
 
-IResource::IResource(Context* context, const Resource_Type type) : Spartan_Object()
+IResource::IResource(Context* context, const Resource_Type type)
 {
 	m_context		= context;
 	m_resource_type	= type;

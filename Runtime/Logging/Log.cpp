@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,15 +19,15 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ========================
+//= INCLUDES ===================
 #include "Log.h"
 #include "ILogger.h"
 #include <fstream>
 #include <cstdarg>
 #include "../World/Entity.h"
 #include "../Core/EventSystem.h"
-#include "../FileSystem/FileSystem.h"
-//===================================
+#include "../Core/FileSystem.h"
+//==============================
 
 //= NAMESPACES ===============
 using namespace std;
@@ -40,16 +40,10 @@ namespace Spartan
 	ofstream Log::m_fout;
 	mutex Log::m_mutex_log;
     vector<LogCmd> Log::m_log_buffer;
-	string Log::m_caller_name;
 	string Log::m_log_file_name	    = "log.txt";
 	bool Log::m_log_to_file		    = true; // start logging to file (unless changed by the user, e.g. Renderer initialization was successful, so logging can happen on screen)
 	bool Log::m_first_log		    = true;
    
-    void Log::SetLogger(const weak_ptr<ILogger>& logger)
-	{
-		m_logger = logger;
-	}
-
 	// Everything resolves to this
 	void Log::Write(const char* text, const Log_Type type)
 	{
@@ -61,24 +55,21 @@ namespace Spartan
 
         lock_guard<mutex> guard(m_mutex_log);
 
-        const auto log_to_file      = m_logger.expired() || m_log_to_file;
-		const auto formated_text    = !m_caller_name.empty() ? m_caller_name + ": " + string(text) : string(text);
+        const auto log_to_file = m_logger.expired() || m_log_to_file;
 
         if (log_to_file)
         {
-            m_log_buffer.emplace_back(formated_text, type);
-            LogToFile(formated_text.c_str(), type);
+            m_log_buffer.emplace_back(text, type);
+            LogToFile(text, type);
         }
         else
         {
             FlushBuffer();
-            LogString(formated_text.c_str(), type);
+            LogString(text, type);
         }
-
-		m_caller_name.clear();
 	}
 
-	void Log::WriteFInfo(const char* text, ...)
+    void Log::WriteFInfo(const char* text, ...)
 	{
 		char buffer[1024];
 		va_list args;
@@ -89,7 +80,7 @@ namespace Spartan
 		Write(buffer, Log_Info);
 	}
 
-	void Log::WriteFWarning(const char* text, ...)
+    void Log::WriteFWarning(const char* text, ...)
 	{
 		char buffer[1024];
 		va_list args;
@@ -100,7 +91,7 @@ namespace Spartan
 		Write(buffer, Log_Warning);
 	}
 
-	void Log::WriteFError(const char* text, ...)
+    void Log::WriteFError(const char* text, ...)
 	{
 		char buffer[1024];
 		va_list args;
@@ -111,7 +102,45 @@ namespace Spartan
 		Write(buffer, Log_Error);
 	}
 
-	void Log::Write(const weak_ptr<Entity>& entity, const Log_Type type)
+    void Log::Write(const string& text, const Log_Type type)
+    {
+        Write(text.c_str(), type);
+    }
+
+    void Log::WriteFInfo(const string text, ...)
+    {
+        char buffer[2048];
+        va_list args;
+        va_start(args, text);
+        auto w = vsnprintf(buffer, sizeof(buffer), text.c_str(), args);
+        va_end(args);
+
+        Write(buffer, Log_Info);
+    }
+
+    void Log::WriteFWarning(const string text, ...)
+    {
+        char buffer[2048];
+        va_list args;
+        va_start(args, text);
+        auto w = vsnprintf(buffer, sizeof(buffer), text.c_str(), args);
+        va_end(args);
+
+        Write(buffer, Log_Warning);
+    }
+
+    void Log::WriteFError(const string text, ...)
+    {
+        char buffer[2048];
+        va_list args;
+        va_start(args, text);
+        auto w = vsnprintf(buffer, sizeof(buffer), text.c_str(), args);
+        va_end(args);
+
+        Write(buffer, Log_Error);
+    }
+
+    void Log::Write(const weak_ptr<Entity>& entity, const Log_Type type)
 	{
 		entity.expired() ? Write("Null", type) : Write(entity.lock()->GetName(), type);
 	}
@@ -184,7 +213,7 @@ namespace Spartan
 		// Delete the previous log file (if it exists)
 		if (m_first_log)
 		{
-			FileSystem::DeleteFile_(m_log_file_name);
+			FileSystem::Delete(m_log_file_name);
 			m_first_log = false;
 		}
 

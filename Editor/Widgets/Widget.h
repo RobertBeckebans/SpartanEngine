@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -38,7 +38,7 @@ public:
 	Widget(Spartan::Context* context)
     {
         m_context   = context;
-        m_profiler  = m_context->GetSubsystem<Spartan::Profiler>().get();
+        m_profiler  = m_context->GetSubsystem<Spartan::Profiler>();
         m_window    = nullptr;
     }
 	virtual ~Widget() = default;
@@ -46,23 +46,20 @@ public:
 	bool Begin()
 	{
         // Callback
-        if (m_callback_begin_visibility)
+        if (m_callback_on_start)
         {
-            m_callback_begin_visibility();
+            m_callback_on_start();
         }
 
 		if (!m_is_window || !m_is_visible)
 			return false;
 
-        TIME_BLOCK_START_CPU_NAMED(m_profiler, m_title.c_str());
-
-        // Reset
-        m_var_pushes = 0;
+        TIME_BLOCK_START_NAMED(m_profiler, m_title.c_str());
 
         // Callback
-        if (m_callback_begin_pre)
+        if (m_callback_on_visible)
         {
-            m_callback_begin_pre();
+            m_callback_on_visible();
         }
 
         // Position
@@ -98,33 +95,49 @@ public:
         }
 
         // Begin
-		ImGui::Begin(m_title.c_str(), &m_is_visible, m_flags);
-		m_window_begun = true;
-
-        if (m_callback_begin_post)
+		if (ImGui::Begin(m_title.c_str(), &m_is_visible, m_flags))
         {
-            m_callback_begin_post();
+            m_window    = ImGui::GetCurrentWindow();
+            m_height    = ImGui::GetWindowHeight();
+            m_begun     = true;
+        }
+        else if (m_window && m_window->Hidden)
+        {
+            // Enters here if the window is hidden as part of an unselected tab.
+            // ImGui::Begin() makes the window and but returns false, then ImGui still expects ImGui::End() to be called.
+            // So we make sure that when Widget::End() is called, ImGui::End() get's called as well.
+            // Note: ImGui's docking is in beta, so maybe it's at fault here ?
+            m_begun = true;
         }
 
-		return true;
+        // Begin callback
+        if (m_begun && m_callback_on_begin)
+        {
+            m_callback_on_begin();
+        }
+
+        return m_begun;
 	}
 
 	virtual void Tick() = 0;
 
 	bool End()
 	{
-        if (!m_window_begun)
-            return false;
-
-		m_window = ImGui::GetCurrentWindow();
-		m_height = ImGui::GetWindowHeight();
-
         // End
-		ImGui::End();
-        ImGui::PopStyleVar(m_var_pushes);
-		m_window_begun = false;
+        if (m_begun)
+        {
+		    ImGui::End();
+        }
 
+        // Pop style variables
+        ImGui::PopStyleVar(m_var_pushes);
+        m_var_pushes = 0;
+		
+        // End profiling
         TIME_BLOCK_END(m_profiler);
+
+        // Reset state
+        m_begun = false;
 
 		return true;
 	}
@@ -133,26 +146,26 @@ public:
     void PushStyleVar(ImGuiStyleVar idx, T val) { ImGui::PushStyleVar(idx, val); m_var_pushes++; }
 
     // Properties
-	auto IsWindow()					   { return m_is_window; }
-	auto& GetVisible()				   { return m_is_visible; }
-	void SetVisible(bool is_visible)   { m_is_visible = is_visible; }
-	auto GetHeight()				   { return m_height; }
-	auto GetWindow()		           { return m_window; }
-	const auto& GetTitle()	           { return m_title; }
+	bool IsWindow()                     const { return m_is_window; }
+	bool& GetVisible()				          { return m_is_visible; }
+	void SetVisible(bool is_visible)          { m_is_visible = is_visible; }
+	float GetHeight()                   const { return m_height; }
+	ImGuiWindow* GetWindow()            const { return m_window; }
+	const auto& GetTitle()              const { return m_title; }
 
 protected:
-	bool m_is_visible	                                = true;
-	bool m_is_window                                    = true;	
-	int m_flags	                                        = ImGuiWindowFlags_NoCollapse;
-	float m_height		                                = 0;
-    float m_alpha                                       = -1.0f;
-    Spartan::Math::Vector2 m_position                   = Spartan::Math::Vector2(-1.0f);
-    Spartan::Math::Vector2 m_size                       = Spartan::Math::Vector2(-1.0f);
-    Spartan::Math::Vector2 m_size_max                   = Spartan::Math::Vector2(FLT_MAX, FLT_MAX);
-    Spartan::Math::Vector2 m_padding                    = Spartan::Math::Vector2(-1.0f);
-    std::function<void()> m_callback_begin_visibility   = nullptr;
-    std::function<void()> m_callback_begin_pre          = nullptr;
-    std::function<void()> m_callback_begin_post         = nullptr;
+	bool m_is_visible	                        = true;
+	bool m_is_window                            = true;	
+	int m_flags	                                = ImGuiWindowFlags_NoCollapse;
+	float m_height		                        = 0;
+    float m_alpha                               = -1.0f;
+    Spartan::Math::Vector2 m_position           = Spartan::Math::Vector2(-1.0f);
+    Spartan::Math::Vector2 m_size               = Spartan::Math::Vector2(-1.0f);
+    Spartan::Math::Vector2 m_size_max           = Spartan::Math::Vector2(FLT_MAX, FLT_MAX);
+    Spartan::Math::Vector2 m_padding            = Spartan::Math::Vector2(-1.0f);
+    std::function<void()> m_callback_on_start   = nullptr;
+    std::function<void()> m_callback_on_visible = nullptr;
+    std::function<void()> m_callback_on_begin   = nullptr;
 
 	Spartan::Context* m_context     = nullptr;
     Spartan::Profiler* m_profiler   = nullptr;
@@ -160,6 +173,6 @@ protected:
     std::string m_title;
 
 private:
-	bool m_window_begun     = false;
+	bool m_begun            = false;
     uint8_t m_var_pushes    = 0;
 };

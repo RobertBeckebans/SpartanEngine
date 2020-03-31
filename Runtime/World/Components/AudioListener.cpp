@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -32,14 +32,9 @@ namespace Spartan
 		m_audio = nullptr;
 	}
 
-	AudioListener::~AudioListener()
+    void AudioListener::OnInitialize()
 	{
-
-	}
-
-	void AudioListener::OnInitialize()
-	{
-		m_audio = GetContext()->GetSubsystem<Audio>().get();
+		m_audio = GetContext()->GetSubsystem<Audio>();
 	}
 
 	void AudioListener::OnTick(float delta_time)

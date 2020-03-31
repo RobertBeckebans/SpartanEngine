@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -89,25 +89,25 @@ namespace Spartan
 		desc.RenderTarget[0].BlendEnable = blend_enabled;
 
 		// Create blend state
-		auto blend_state	= static_cast<ID3D11BlendState*>(m_buffer);
+		auto blend_state	= static_cast<ID3D11BlendState*>(m_resource);
 		const auto result	= rhi_device->GetContextRhi()->device->CreateBlendState(&desc, &blend_state);
 
 		// Handle result
 		if (SUCCEEDED(result))
 		{
-			m_buffer		= static_cast<void*>(blend_state);
+			m_resource		= static_cast<void*>(blend_state);
 			m_initialized	= true;	
 		}
 		else
 		{
 			m_initialized = false;
-			LOGF_ERROR("Failed to create blend state %s.", D3D11_Common::dxgi_error_to_string(result));
+			LOG_ERROR("Failed to create blend state %s.", d3d11_common::dxgi_error_to_string(result));
 		}
 	}
 
 	RHI_BlendState::~RHI_BlendState()
 	{
-		safe_release(static_cast<ID3D11BlendState*>(m_buffer));
+		safe_release(*reinterpret_cast<ID3D11BlendState**>(&m_resource));
 	}
 }
 #endif

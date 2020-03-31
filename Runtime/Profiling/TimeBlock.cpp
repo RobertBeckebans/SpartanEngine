@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,11 +19,12 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES =================
+//= INCLUDES ======================
 #include "TimeBlock.h"
 #include "../Logging/Log.h"
 #include "../RHI/RHI_Device.h"
-//============================
+#include "../RHI/RHI_CommandList.h"
+//=================================
 
 //= NAMESPACES =====
 using namespace std;
@@ -31,107 +32,98 @@ using namespace std;
 
 namespace Spartan
 {
+    uint32_t TimeBlock::m_max_tree_depth = 0;
+
 	TimeBlock::~TimeBlock()
 	{
-		if (m_query)
-		{
-			m_rhi_device->ProfilingReleaseQuery(m_query);
-			m_rhi_device->ProfilingReleaseQuery(m_query_start);
-			m_rhi_device->ProfilingReleaseQuery(m_query_end);
-		}
-
-		Clear();
-		m_query			= nullptr;
-		m_query_start	= nullptr;
-		m_query_end		= nullptr;
+        RHI_CommandList::Gpu_QueryRelease(m_query_disjoint);
+        RHI_CommandList::Gpu_QueryRelease(m_query_start);
+        RHI_CommandList::Gpu_QueryRelease(m_query_end);
+		Reset();
 	}
 
-	void TimeBlock::Begin(const string& name, bool profile_cpu /*= false*/, bool profile_gpu /*= false*/, const TimeBlock* parent /*= nullptr*/, const shared_ptr<RHI_Device>& rhi_device /*= nullptr*/)
+	void TimeBlock::Begin(const char* name, TimeBlock_Type type, const TimeBlock* parent /*= nullptr*/, RHI_CommandList* cmd_list /*= nullptr*/, const shared_ptr<RHI_Device>& rhi_device /*= nullptr*/)
 	{
-		m_name			= name;
-		m_parent		= parent;
-		m_tree_depth	= FindTreeDepth(this);
-		m_rhi_device	= rhi_device.get();
+		m_name			    = name;
+		m_parent		    = parent;
+		m_tree_depth	    = FindTreeDepth(this);
+		m_rhi_device	    = rhi_device.get();
+        m_cmd_list          = cmd_list;
+        m_type              = type;
+        m_max_tree_depth    = Math::Max(m_max_tree_depth, m_tree_depth);
 
-		if (profile_cpu)
+		if (type == TimeBlock_Cpu)
 		{
-			start = chrono::high_resolution_clock::now();
-			m_profiling_cpu = true;
+			m_start = chrono::high_resolution_clock::now();
 		}
-
-		if (profile_gpu)
+		else if (type == TimeBlock_Gpu)
 		{
 			// Create required queries
-			if (!m_query)
+			if (!m_query_disjoint)
 			{
-				rhi_device->ProfilingCreateQuery(&m_query, Query_Timestamp_Disjoint);
-				rhi_device->ProfilingCreateQuery(&m_query_start, Query_Timestamp);
-				rhi_device->ProfilingCreateQuery(&m_query_end, Query_Timestamp);
+				RHI_CommandList::Gpu_QueryCreate(m_rhi_device, &m_query_disjoint, RHI_Query_Timestamp_Disjoint);
+				RHI_CommandList::Gpu_QueryCreate(m_rhi_device, &m_query_start, RHI_Query_Timestamp);
+				RHI_CommandList::Gpu_QueryCreate(m_rhi_device, &m_query_end, RHI_Query_Timestamp);
 			}
 
-			// Get time stamp
-			rhi_device->ProfilingQueryStart(m_query);
-			rhi_device->ProfilingGetTimeStamp(m_query_start);
-
-			m_profiling_gpu = true;
+            if (cmd_list)
+            {
+                cmd_list->Timestamp_Start(m_query_disjoint, m_query_start);
+            }
 		}
-
-		m_is_complete = false;
-		m_has_started = true;
 	}
 
-	void TimeBlock::End(const shared_ptr<RHI_Device>& rhi_device /*= nullptr*/)
+	void TimeBlock::End()
 	{
-		if (!m_has_started)
+		if (m_type == TimeBlock_Cpu)
 		{
-			LOG_WARNING("TimeBlock::Start() hasn't been called, ignoring time block.");
-			return;
+			m_end = chrono::high_resolution_clock::now();
+		}
+		else if (m_type == TimeBlock_Gpu)
+		{
+            if (m_cmd_list)
+            {
+                m_cmd_list->Timestamp_End(m_query_disjoint, m_query_end);
+            }
 		}
 
-		if (m_profiling_cpu)
-		{
-			end = chrono::high_resolution_clock::now();
-			chrono::duration<double, milli> ms = end - start;
-			m_duration_cpu = static_cast<float>(ms.count());
-		}
-
-		if (m_profiling_gpu)
-		{
-			if (m_query)
-			{
-				// Get time stamp
-				rhi_device->ProfilingGetTimeStamp(m_query_end);
-				rhi_device->ProfilingGetTimeStamp(m_query);
-			}
-			else
-			{
-				LOG_ERROR_INVALID_INTERNALS();
-			}
-		}
-
-		m_is_complete = true;
-		m_has_started = false;
+        m_is_complete = true;
 	}
 
-	void TimeBlock::OnFrameEnd(const shared_ptr<RHI_Device>& rhi_device)
-	{
-		if (!m_query)
-			return;
+    void TimeBlock::ComputeDuration()
+    {
+        if (!m_is_complete)
+        {
+            LOG_WARNING("TimeBlock::Start() hasn't been called, ignoring time block %s.", m_name);
+            return;
+        }
 
-		m_duration_gpu = rhi_device->ProfilingGetDuration(m_query, m_query_start, m_query_end);
-	}
+        if (m_type == TimeBlock_Cpu)
+        {
+            const chrono::duration<double, milli> ms = m_end - m_start;
+            m_duration = static_cast<float>(ms.count());
+        }
+        else if (m_type == TimeBlock_Gpu)
+        {
+            if (m_cmd_list)
+            {
+                m_duration = m_cmd_list->Timestamp_GetDuration(m_query_disjoint, m_query_start, m_query_end);
+            }
+        }
+    }
 
-	void TimeBlock::Clear()
+    void TimeBlock::Reset()
 	{
-		m_name.clear();
-		m_parent		= nullptr;
-		m_tree_depth	= 0;
-		m_is_complete	= false;
-		m_has_started	= false;
-		m_duration_cpu	= 0.0f;
-		m_duration_gpu	= 0.0f;
-		m_profiling_cpu = false;
-		m_profiling_gpu = false;
+        m_name              = nullptr;
+		m_parent		    = nullptr;
+		m_tree_depth	    = 0;
+		m_duration	        = 0.0f;
+        m_max_tree_depth    = 0;
+        m_type              = TimeBlock_Undefined;
+        m_is_complete       = false;
+        RHI_CommandList::Gpu_QueryRelease(m_query_disjoint);
+        RHI_CommandList::Gpu_QueryRelease(m_query_start);
+        RHI_CommandList::Gpu_QueryRelease(m_query_end);
 	}
 
 	uint32_t TimeBlock::FindTreeDepth(const TimeBlock* time_block, uint32_t depth /*= 0*/)

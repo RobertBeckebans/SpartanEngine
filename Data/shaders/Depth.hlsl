@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -23,16 +23,19 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "Common.hlsl"
 //====================
 
-cbuffer ObjectBuffer : register(b1)
-{		
-	matrix mvp;
-};
-Pixel_Pos mainVS(Vertex_Pos input)
+Pixel_PosUv mainVS(Vertex_PosUv input)
 {
-	Pixel_Pos output;
+	Pixel_PosUv output;
 
 	input.position.w 	= 1.0f;	
-    output.position 	= mul(input.position, mvp);
-	
+    output.position 	= mul(input.position, g_object_transform);
+    output.uv 			= input.uv;
+
 	return output;
+}
+
+float4 mainPS(Pixel_PosUv input) : SV_TARGET
+{
+    float2 uv = float2(input.uv.x * materialTiling.x + materialOffset.x, input.uv.y * materialTiling.y + materialOffset.y);
+    return degamma(tex.Sample(sampler_anisotropic_wrap, uv)) * materialAlbedoColor;
 }

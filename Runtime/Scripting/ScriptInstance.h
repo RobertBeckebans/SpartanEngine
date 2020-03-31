@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -37,15 +37,15 @@ namespace Spartan
 	class ScriptInstance
 	{
 	public:
-		ScriptInstance();
+		ScriptInstance() = default;
 		~ScriptInstance();
 
-		bool Instantiate(const std::string& path, std::weak_ptr<Entity> entity, std::shared_ptr<Scripting> scriptEngine);
-		bool IsInstantiated()		{ return m_isInstantiated; }
-		const auto& GetScriptPath() { return m_scriptPath; }
+		bool Instantiate(const std::string& path, const std::weak_ptr<Entity>& entity, Scripting* scriptEngine);
+		bool IsInstantiated() const { return m_isInstantiated; }
+		const auto& GetScriptPath() const { return m_scriptPath; }
 
-		void ExecuteStart();
-		void ExecuteUpdate(float delta_time);
+		void ExecuteStart() const;
+		void ExecuteUpdate(float delta_time) const;
 
 	private:
 		bool CreateScriptObject();
@@ -60,7 +60,7 @@ namespace Spartan
 		asIScriptFunction* m_constructorFunction	= nullptr;
 		asIScriptFunction* m_startFunction			= nullptr;
 		asIScriptFunction* m_updateFunction			= nullptr;
-		std::shared_ptr<Scripting> m_scriptEngine	= nullptr;
+        Scripting* m_scripting	                    = nullptr;
 		bool m_isInstantiated						= false;
 	};
 }

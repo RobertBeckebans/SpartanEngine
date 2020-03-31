@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -93,7 +93,7 @@ namespace Spartan
 
 		//= IO ================================
 		bool Load(const std::string& filePath);
-		bool Save(const std::string& filePath);
+		bool Save(const std::string& filePath) const;
 		//=====================================
 
 	private:

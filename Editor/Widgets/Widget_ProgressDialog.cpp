@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -42,13 +42,13 @@ Widget_ProgressDialog::Widget_ProgressDialog(Context* contex) : Widget(contex)
 	m_progress		            = 0.0f;
     m_size                      = Vector2(_Widget_ProgressDialog::width, 83.0f);
 	m_flags	                    |= ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoDocking;
-    m_callback_begin_visibility = [this]()
+    m_callback_on_start = [this]()
     {
         // Determine if an operation is in progress
         ProgressReport& progressReport  = ProgressReport::Get();
-        bool is_loading_model           = progressReport.GetIsLoading(g_progress_model_importer);
-        bool is_loading_scene           = progressReport.GetIsLoading(g_progress_world);
-        bool in_progress                = is_loading_model || is_loading_scene;
+        const bool is_loading_model           = progressReport.GetIsLoading(g_progress_model_importer);
+        const bool is_loading_scene           = progressReport.GetIsLoading(g_progress_world);
+        const bool in_progress                = is_loading_model || is_loading_scene;
 
         // Acquire progress
         if (is_loading_model)

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -28,7 +28,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "../RHI_Sampler.h"
 #include "../RHI_Device.h"
 #include "../../Logging/Log.h"
-#include "../../Core/Settings.h"
 #include "../../Core/Context.h"
 #include "../../Rendering/Renderer.h"
 //===================================
@@ -64,18 +63,18 @@ namespace Spartan
 		m_comparison_enabled	= comparison_enabled;
 
 		D3D11_SAMPLER_DESC sampler_desc;
-		sampler_desc.Filter			= D3D11_Common::sampler::get_filter(filter_min, filter_mag, filter_mipmap, anisotropy_enabled, comparison_enabled);
+		sampler_desc.Filter			= d3d11_common::sampler::get_filter(filter_min, filter_mag, filter_mipmap, anisotropy_enabled, comparison_enabled);
 		sampler_desc.AddressU		= d3d11_sampler_address_mode[sampler_address_mode];
 		sampler_desc.AddressV		= d3d11_sampler_address_mode[sampler_address_mode];
 		sampler_desc.AddressW		= d3d11_sampler_address_mode[sampler_address_mode];
 		sampler_desc.MipLODBias		= 0.0f;
-        sampler_desc.MaxAnisotropy  = rhi_device->GetContext()->GetSubsystem<Renderer>()->GetAnisotropy();
-		sampler_desc.ComparisonFunc	= d3d11_compare_operator[comparison_function];
+        sampler_desc.MaxAnisotropy  = rhi_device->GetContext()->GetSubsystem<Renderer>()->GetOptionValue<UINT>(Option_Value_Anisotropy);
+		sampler_desc.ComparisonFunc	= d3d11_comparison_function[comparison_function];
 		sampler_desc.BorderColor[0]	= 0;
 		sampler_desc.BorderColor[1]	= 0;
 		sampler_desc.BorderColor[2]	= 0;
 		sampler_desc.BorderColor[3]	= 0;
-		sampler_desc.MinLOD			= FLT_MIN;
+		sampler_desc.MinLOD			= 0;
 		sampler_desc.MaxLOD			= FLT_MAX;
 	
 		// Create sampler state.
@@ -87,7 +86,7 @@ namespace Spartan
 
 	RHI_Sampler::~RHI_Sampler()
 	{
-		safe_release(reinterpret_cast<ID3D11SamplerState*>(m_resource));
+		safe_release(*reinterpret_cast<ID3D11SamplerState**>(&m_resource));
 	}
 }
 #endif

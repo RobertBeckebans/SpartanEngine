@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -60,9 +60,9 @@ namespace Spartan
 			return instance;
 		}
 
-		ProgressReport(){}
+		ProgressReport() = default;
 
-		void Reset(int progressID)
+        void Reset(int progressID)
 		{
 			m_reports[progressID].Clear();
 		}
@@ -72,7 +72,7 @@ namespace Spartan
 		void SetJobCount(int progressID, int jobCount)				{ m_reports[progressID].jobCount = jobCount;}
 		void IncrementJobsDone(int progressID)						{ m_reports[progressID].jobsDone++; }
 		void SetJobsDone(int progressID, int jobsDone)				{ m_reports[progressID].jobsDone = jobsDone; }
-		float GetPercentage(int progressID)							{ return (float)m_reports[progressID].jobsDone / (float)m_reports[progressID].jobCount; }
+		float GetPercentage(int progressID)							{ return static_cast<float>(m_reports[progressID].jobsDone) / static_cast<float>(m_reports[progressID].jobCount); }
 		bool GetIsLoading(int progressID)							{ return m_reports[progressID].isLoading; }
 		void SetIsLoading(int progressID, bool isLoading)			{ m_reports[progressID].isLoading = isLoading; }
 

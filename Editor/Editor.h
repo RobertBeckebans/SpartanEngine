@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -25,42 +25,45 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <vector>
 #include <memory>
 #include "RHI/RHI_Definition.h"
+#include "Widgets/Widget.h"
 //=============================
 
 //= FORWARD DECLARATIONS =
-class Widget;
 namespace Spartan 
 {
 	class Context; 
 	class Engine;
 	class Renderer;
+    class Profiler;
+    struct WindowData;
 }
 //========================
 
 class Editor
 {
 public:
-	Editor(void* window_handle, void* window_instance, float width, float height);
+    Editor() = default;
 	~Editor();
 
-    void OnWindowMessage(uint32_t message);
-	void OnWindowResize(float width, float height);
-	void Tick();
+    void OnWindowMessage(Spartan::WindowData& window_data);
+	void OnTick();
 
 private:
 	void Widgets_Create();
 	void Widgets_Tick();
-	void DockSpace_Begin();
-	void DockSpace_End();	
+	void MainWindow_Begin();
+	void MainWindow_End();	
 	void ApplyStyle() const;
 
 	// Editor
 	std::vector<std::unique_ptr<Widget>> m_widgets;
-	bool m_initialized = false;
+	bool m_initializing = false;
+    bool m_editor_begun = false;
 
 	// Engine
 	std::unique_ptr<Spartan::Engine> m_engine;
-	std::shared_ptr<Spartan::RHI_Device> m_rhiDevice;
+	std::shared_ptr<Spartan::RHI_Device> m_rhi_device;
 	Spartan::Context* m_context	    = nullptr;
-	Spartan::Renderer* m_renderer	= nullptr;	
+	Spartan::Renderer* m_renderer	= nullptr;
+    Spartan::Profiler* m_profiler   = nullptr;
 };

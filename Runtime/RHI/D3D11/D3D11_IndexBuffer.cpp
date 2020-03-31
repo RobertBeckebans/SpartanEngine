@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -38,8 +38,7 @@ namespace Spartan
 {
 	RHI_IndexBuffer::~RHI_IndexBuffer()
 	{
-		safe_release(static_cast<ID3D11Buffer*>(m_buffer));
-		m_buffer = nullptr;
+		safe_release(*reinterpret_cast<ID3D11Buffer**>(&m_buffer));
 	}
 
 	bool RHI_IndexBuffer::_Create(const void* indices)
@@ -50,20 +49,14 @@ namespace Spartan
 			return false;
 		}
 
-		if (!m_is_dynamic && !indices)
-		{
-			LOG_ERROR_INVALID_PARAMETER();
-			return false;
-		}
-
-		safe_release(static_cast<ID3D11Buffer*>(m_buffer));
-		m_buffer = nullptr;
+        const bool is_dynamic = indices == nullptr;
+		safe_release(*reinterpret_cast<ID3D11Buffer**>(&m_buffer));
 
 		D3D11_BUFFER_DESC buffer_desc;
 		ZeroMemory(&buffer_desc, sizeof(buffer_desc));
 		buffer_desc.ByteWidth			= m_stride * m_index_count;
-		buffer_desc.Usage				= m_is_dynamic ? D3D11_USAGE_DYNAMIC : D3D11_USAGE_IMMUTABLE;
-		buffer_desc.CPUAccessFlags		= m_is_dynamic ? D3D11_CPU_ACCESS_WRITE : 0;
+		buffer_desc.Usage				= is_dynamic ? D3D11_USAGE_DYNAMIC : D3D11_USAGE_IMMUTABLE;
+		buffer_desc.CPUAccessFlags		= is_dynamic ? D3D11_CPU_ACCESS_WRITE : 0;
 		buffer_desc.BindFlags			= D3D11_BIND_INDEX_BUFFER;	
 		buffer_desc.MiscFlags			= 0;
 		buffer_desc.StructureByteStride = 0;
@@ -74,7 +67,7 @@ namespace Spartan
 		init_data.SysMemSlicePitch	= 0;
 
 		const auto ptr = reinterpret_cast<ID3D11Buffer**>(&m_buffer);
-		const auto result = m_rhi_device->GetContextRhi()->device->CreateBuffer(&buffer_desc, m_is_dynamic ? nullptr : &init_data, ptr);
+		const auto result = m_rhi_device->GetContextRhi()->device->CreateBuffer(&buffer_desc, is_dynamic ? nullptr : &init_data, ptr);
 		if FAILED(result)
 		{
 			LOG_ERROR(" Failed to create index buffer");
@@ -114,5 +107,10 @@ namespace Spartan
 		m_rhi_device->GetContextRhi()->device_context->Unmap(static_cast<ID3D11Resource*>(m_buffer), 0);
 		return true;
 	}
+
+    bool RHI_IndexBuffer::Flush() const
+    {
+        return true;
+    }
 }
 #endif

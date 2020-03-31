@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -27,7 +27,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //= INCLUDES =====================
 #include "../RHI_Device.h"
 #include "../RHI_VertexBuffer.h"
-#include "../RHI_Vertex.h"
 #include "../../Logging/Log.h"
 //================================
 
@@ -39,8 +38,7 @@ namespace Spartan
 {
 	RHI_VertexBuffer::~RHI_VertexBuffer()
 	{
-		safe_release(static_cast<ID3D11Buffer*>(m_buffer));
-		m_buffer = nullptr;
+		safe_release(*reinterpret_cast<ID3D11Buffer**>(&m_buffer));
 	}
 
 	bool RHI_VertexBuffer::_Create(const void* vertices)
@@ -51,36 +49,26 @@ namespace Spartan
 			return false;
 		}
 
-		if (!m_is_dynamic)
-		{
-			if (!vertices || m_vertex_count == 0)
-			{
-				LOG_ERROR_INVALID_PARAMETER();
-				return false;
-			}
-		}
-
-		safe_release(static_cast<ID3D11Buffer*>(m_buffer));
-		m_buffer = nullptr;
+        const bool is_dynamic = vertices == nullptr;
+		safe_release(*reinterpret_cast<ID3D11Buffer**>(&m_buffer));
 
 		// fill in a buffer description.
-		D3D11_BUFFER_DESC buffer_desc;
-		ZeroMemory(&buffer_desc, sizeof(buffer_desc));
-		buffer_desc.ByteWidth			= m_stride * m_vertex_count;
-		buffer_desc.Usage				= m_is_dynamic ? D3D11_USAGE_DYNAMIC : D3D11_USAGE_IMMUTABLE;
-		buffer_desc.CPUAccessFlags		= m_is_dynamic ? D3D11_CPU_ACCESS_WRITE : 0;
+        D3D11_BUFFER_DESC buffer_desc   = {};
+		buffer_desc.ByteWidth			= static_cast<UINT>(m_size_gpu);
+		buffer_desc.Usage				= is_dynamic ? D3D11_USAGE_DYNAMIC : D3D11_USAGE_IMMUTABLE;
+		buffer_desc.CPUAccessFlags		= is_dynamic ? D3D11_CPU_ACCESS_WRITE : 0;
 		buffer_desc.BindFlags			= D3D11_BIND_VERTEX_BUFFER;	
 		buffer_desc.MiscFlags			= 0;
 		buffer_desc.StructureByteStride = 0;
 
 		// fill in the subresource data.
-		D3D11_SUBRESOURCE_DATA init_data;
-		init_data.pSysMem			= vertices;
-		init_data.SysMemPitch		= 0;
-		init_data.SysMemSlicePitch	= 0;
+        D3D11_SUBRESOURCE_DATA init_data    = {};
+		init_data.pSysMem			        = vertices;
+		init_data.SysMemPitch		        = 0;
+		init_data.SysMemSlicePitch	        = 0;
 
 		const auto ptr		= reinterpret_cast<ID3D11Buffer**>(&m_buffer);
-		const auto result	= m_rhi_device->GetContextRhi()->device->CreateBuffer(&buffer_desc, m_is_dynamic ? nullptr : &init_data, ptr);
+		const auto result	= m_rhi_device->GetContextRhi()->device->CreateBuffer(&buffer_desc, is_dynamic ? nullptr : &init_data, ptr);
 		if (FAILED(result))
 		{
 			LOG_ERROR("Failed to create vertex buffer");
@@ -122,5 +110,10 @@ namespace Spartan
 		m_rhi_device->GetContextRhi()->device_context->Unmap(static_cast<ID3D11Resource*>(m_buffer), 0);
 		return true;
 	}
+
+    bool RHI_VertexBuffer::Flush() const
+    {
+        return true;
+    }
 }
 #endif

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -23,6 +23,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 // RHI (Rendering Hardware Interface)
 
+//= INCLUDES ===============
+#include <stdint.h>
+#include "..\Math\Vector4.h"
+//==========================
+
 // Declarations
 namespace Spartan
 {
@@ -32,6 +37,8 @@ namespace Spartan
 	class RHI_PipelineState;
 	class RHI_PipelineCache;
 	class RHI_Pipeline;
+    class RHI_DescriptorSetLayout;
+    class RHI_DescriptorCache;
 	class RHI_SwapChain;
 	class RHI_RasterizerState;
 	class RHI_BlendState;
@@ -52,141 +59,266 @@ namespace Spartan
 	struct RHI_Vertex_PosUvCol;
 	struct RHI_Vertex_PosTexNorTan;
 
+    enum RHI_PhysicalDevice_Type
+    {
+        RHI_PhysicalDevice_Unknown,
+        RHI_PhysicalDevice_Integrated,
+        RHI_PhysicalDevice_Discrete,
+        RHI_PhysicalDevice_Virtual,
+        RHI_PhysicalDevice_Cpu
+    };
+
 	enum RHI_Present_Mode : uint32_t
 	{
-		Present_Immediate                   = 1 << 0,
-		Present_Mailbox                     = 1 << 1,
-		Present_Fifo                        = 1 << 2,
-		Present_Relaxed                     = 1 << 3,
-		Present_SharedDemandRefresh         = 1 << 4,
-		Present_SharedDContinuousRefresh    = 1 << 5,
+		RHI_Present_Immediate                   = 1 << 0,
+		RHI_Present_Mailbox                     = 1 << 1,
+		RHI_Present_Fifo                        = 1 << 2,
+		RHI_Present_Relaxed                     = 1 << 3,
+		RHI_Present_SharedDemandRefresh         = 1 << 4,
+		RHI_Present_SharedDContinuousRefresh    = 1 << 5,
 
         // Find a way to remove those legacy D3D11 only flags
-        Swap_Discard                = 1 << 6,
-        Swap_Sequential             = 1 << 7,
-        Swap_Flip_Sequential        = 1 << 8,
-        Swap_Flip_Discard           = 1 << 9,
-        SwapChain_Allow_Mode_Switch = 1 << 10
+        RHI_Swap_Discard                = 1 << 6,
+        RHI_Swap_Sequential             = 1 << 7,
+        RHI_Swap_Flip_Sequential        = 1 << 8,
+        RHI_Swap_Flip_Discard           = 1 << 9,
+        RHI_SwapChain_Allow_Mode_Switch = 1 << 10
 	};
+
+    enum RHI_Queue_Type
+    {
+        RHI_Queue_Graphics,
+        RHI_Queue_Transfer,
+        RHI_Queue_Compute,
+        RHI_Queue_Undefined
+    };
 
 	enum RHI_Query_Type
 	{
-		Query_Timestamp,
-		Query_Timestamp_Disjoint
+		RHI_Query_Timestamp,
+		RHI_Query_Timestamp_Disjoint
 	};
 
-	enum RHI_Clear_Buffer
+	enum RHI_Buffer_Scope : uint8_t
 	{
-		Clear_Depth		= 1 << 0,
-		Clear_Stencil	= 1 << 1
-	};
-
-	enum RHI_Buffer_Scope
-	{
-		Buffer_VertexShader,
-		Buffer_PixelShader,
-		Buffer_Global,
-		Buffer_NotAssigned
+		RHI_Buffer_VertexShader = 1 << 0,
+		RHI_Buffer_PixelShader  = 1 << 1,
 	};
 
 	enum RHI_PrimitiveTopology_Mode
 	{
-		PrimitiveTopology_TriangleList,
-		PrimitiveTopology_LineList,
-		PrimitiveTopology_NotAssigned
+		RHI_PrimitiveTopology_TriangleList,
+		RHI_PrimitiveTopology_LineList,
+		RHI_PrimitiveTopology_Unknown
 	};
 
 	enum RHI_Cull_Mode
 	{
-		Cull_None,
-		Cull_Front,
-		Cull_Back
+		RHI_Cull_None,
+		RHI_Cull_Front,
+		RHI_Cull_Back,
+        RHI_Cull_Undefined
 	};
 
 	enum RHI_Fill_Mode
 	{
-		Fill_Solid,
-		Fill_Wireframe
+		RHI_Fill_Solid,
+		RHI_Fill_Wireframe,
+        RHI_Fill_Undefined
 	};
 
 	enum RHI_Filter
 	{
-		Filter_Nearest,
-		Filter_Linear,
+		RHI_Filter_Nearest,
+		RHI_Filter_Linear,
 	};
 
 	enum RHI_Sampler_Mipmap_Mode
 	{
-		Sampler_Mipmap_Nearest,
-		Sampler_Mipmap_Linear,
+		RHI_Sampler_Mipmap_Nearest,
+		RHI_Sampler_Mipmap_Linear,
 	};
 
 	enum RHI_Sampler_Address_Mode
 	{
-		Sampler_Address_Wrap,
-		Sampler_Address_Mirror,
-		Sampler_Address_Clamp,
-		Sampler_Address_Border,
-		Sampler_Address_MirrorOnce,
+		RHI_Sampler_Address_Wrap,
+		RHI_Sampler_Address_Mirror,
+		RHI_Sampler_Address_Clamp,
+		RHI_Sampler_Address_Border,
+		RHI_Sampler_Address_MirrorOnce,
 	};
 
 	enum RHI_Comparison_Function
 	{
-		Comparison_Never,
-		Comparison_Less,
-		Comparison_Equal,
-		Comparison_LessEqual,
-		Comparison_Greater,
-		Comparison_NotEqual,
-		Comparison_GreaterEqual,
-		Comparison_Always
+		RHI_Comparison_Never,
+		RHI_Comparison_Less,
+		RHI_Comparison_Equal,
+		RHI_Comparison_LessEqual,
+		RHI_Comparison_Greater,
+		RHI_Comparison_NotEqual,
+		RHI_Comparison_GreaterEqual,
+		RHI_Comparison_Always
 	};
 
-	enum RHI_Format
+    enum RHI_Stencil_Operation
+    {
+        RHI_Stencil_Keep,
+        RHI_Stencil_Zero,
+        RHI_Stencil_Replace,
+        RHI_Stencil_Incr_Sat,
+        RHI_Stencil_Decr_Sat,
+        RHI_Stencil_Invert,
+        RHI_Stencil_Incr,
+        RHI_Stencil_Decr
+    };
+
+	enum RHI_Format : uint32_t // gets serialized so better be explicit
 	{
 		// R
-		Format_R8_UNORM,
-		Format_R16_UINT,
-		Format_R16_FLOAT,
-		Format_R32_UINT,
-		Format_R32_FLOAT,
-		Format_D32_FLOAT,
-		Format_R32_FLOAT_TYPELESS,
+		RHI_Format_R8_Unorm,
+		RHI_Format_R16_Uint,
+		RHI_Format_R16_Float,
+		RHI_Format_R32_Uint,
+		RHI_Format_R32_Float,
 		// RG
-		Format_R8G8_UNORM,
-		Format_R16G16_FLOAT,
-		Format_R32G32_FLOAT,	
+		RHI_Format_R8G8_Unorm,
+		RHI_Format_R16G16_Float,
+		RHI_Format_R32G32_Float,	
 		// RGB
-		Format_R32G32B32_FLOAT,
+        RHI_Format_R11G11B10_Float,
+		RHI_Format_R32G32B32_Float,
 		// RGBA
-		Format_R8G8B8A8_UNORM,
-		Format_R16G16B16A16_FLOAT,
-		Format_R32G32B32A32_FLOAT
+		RHI_Format_R8G8B8A8_Unorm,
+		RHI_Format_R16G16B16A16_Float,
+		RHI_Format_R32G32B32A32_Float,   
+        // DEPTH
+        RHI_Format_D32_Float,
+        RHI_Format_D32_Float_S8X24_Uint,
+
+        RHI_Format_Undefined
 	};
 
 	enum RHI_Blend
 	{
-		Blend_Zero,
-		Blend_One,
-		Blend_Src_Color,
-		Blend_Inv_Src_Color,
-		Blend_Src_Alpha,
-		Blend_Inv_Src_Alpha
+		RHI_Blend_Zero,
+		RHI_Blend_One,
+		RHI_Blend_Src_Color,
+		RHI_Blend_Inv_Src_Color,
+		RHI_Blend_Src_Alpha,
+		RHI_Blend_Inv_Src_Alpha,
+        RHI_Blend_Dest_Alpha,
+        RHI_Blend_Inv_Dest_Alpha,
+        RHI_Blend_Dest_Color,
+        RHI_Blend_Inv_Dest_Color,
+        RHI_Blend_Src_Alpha_Sat,
+        RHI_Blend_Blend_Factor,
+        RHI_Blend_Inv_Blend_Factor,
+        RHI_Blend_Src1_Color,
+        RHI_Blend_Inv_Src1_Color,
+        RHI_Blend_Src1_Alpha,
+        RHI_Blend_Inv_Src1_Alpha
 	};
 
 	enum RHI_Blend_Operation
 	{
-		Blend_Operation_Add,
-		Blend_Operation_Subtract,
-		Blend_Operation_Rev_Subtract,
-		Blend_Operation_Min,
-		Blend_Operation_Max
+		RHI_Blend_Operation_Add,
+		RHI_Blend_Operation_Subtract,
+		RHI_Blend_Operation_Rev_Subtract,
+		RHI_Blend_Operation_Min,
+		RHI_Blend_Operation_Max
 	};
 
 	enum RHI_Descriptor_Type
 	{
-		Descriptor_Sampler,
-		Descriptor_Texture,
-		Descriptor_ConstantBuffer
+		RHI_Descriptor_Sampler,
+		RHI_Descriptor_Texture,
+		RHI_Descriptor_ConstantBuffer,
+        RHI_Descriptor_ConstantBufferDynamic,
+        RHI_Descriptor_Undefined
+	};
+
+    enum RHI_Image_Layout
+    {
+        RHI_Image_Undefined,
+        RHI_Image_General,
+        RHI_Image_Preinitialized,
+        RHI_Image_Color_Attachment_Optimal,
+        RHI_Image_Depth_Stencil_Attachment_Optimal,
+        RHI_Image_Depth_Stencil_Read_Only_Optimal,    
+        RHI_Image_Shader_Read_Only_Optimal,
+        RHI_Image_Transfer_Dst_Optimal,
+        RHI_Image_Present_Src
+    };
+
+    struct RHI_Descriptor
+    {
+        RHI_Descriptor() = default;
+
+        RHI_Descriptor(const RHI_Descriptor& descriptor)
+        {
+            type    = descriptor.type;
+            slot    = descriptor.slot;
+            stage   = descriptor.stage;
+        }
+
+        RHI_Descriptor(RHI_Descriptor_Type type, uint32_t slot, uint32_t stage)
+        {
+            this->type  = type;
+            this->slot  = slot;
+            this->stage = stage;
+        }
+
+        uint32_t slot               = 0;
+        uint32_t stage              = 0;
+        uint64_t offset             = 0;
+        uint64_t range              = 0;
+        RHI_Descriptor_Type type    = RHI_Descriptor_Undefined;
+        RHI_Image_Layout layout     = RHI_Image_Undefined;
+        void* resource              = nullptr;
+    };
+
+    inline const char* rhi_format_to_string(const RHI_Format result)
+    {
+        switch (result)
+        {
+            case RHI_Format_R8_Unorm:               return "RHI_Format_R8_Unorm";
+            case RHI_Format_R16_Uint:			    return "RHI_Format_R16_Uint";
+            case RHI_Format_R16_Float:			    return "RHI_Format_R16_Float";
+            case RHI_Format_R32_Uint:			    return "RHI_Format_R32_Uint";
+            case RHI_Format_R32_Float:			    return "RHI_Format_R32_Float";
+            case RHI_Format_R8G8_Unorm:			    return "RHI_Format_R8G8_Unorm";
+            case RHI_Format_R16G16_Float:		    return "RHI_Format_R16G16_Float";
+            case RHI_Format_R32G32_Float:		    return "RHI_Format_R32G32_Float";
+            case RHI_Format_R32G32B32_Float:	    return "RHI_Format_R32G32B32_Float";
+            case RHI_Format_R8G8B8A8_Unorm:		    return "RHI_Format_R8G8B8A8_Unorm";
+            case RHI_Format_R16G16B16A16_Float:	    return "RHI_Format_R16G16B16A16_Float";
+            case RHI_Format_R32G32B32A32_Float:	    return "RHI_Format_R32G32B32A32_Float";
+            case RHI_Format_D32_Float:	            return "RHI_Format_D32_Float";
+            case RHI_Format_D32_Float_S8X24_Uint:	return "RHI_Format_D32_Float_S8X24_Uint";
+            case RHI_Format_Undefined:              return "RHI_Format_Undefined";
+        }
+
+        return "Unknown format";
+    }
+
+    static const Math::Vector4 state_dont_clear_color   = Math::Vector4::Infinity;
+    static const float state_dont_clear_depth           = std::numeric_limits<float>::infinity();
+    static const uint8_t state_dont_clear_stencil       = 255;
+    static const uint8_t state_max_render_target_count  = 8;
+
+    enum Shader_Type : uint32_t
+	{
+        Shader_Unknown  = 1 << 0,
+		Shader_Vertex   = 1 << 1,
+		Shader_Pixel    = 1 << 2,
+        Shader_Compute  = 1 << 3,
+	};
+
+	enum Shader_Compilation_State
+	{
+		Shader_Compilation_Unknown,
+		Shader_Compilation_Compiling,
+		Shader_Compilation_Succeeded,
+		Shader_Compilation_Failed
 	};
 }

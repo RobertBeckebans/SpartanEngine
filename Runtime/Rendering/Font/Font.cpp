@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,18 +19,16 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ============================
+//= INCLUDES ==================================
 #include "Font.h"
-#include "Glyph.h"
 #include "../Renderer.h"
 #include "../../Core/Stopwatch.h"
-#include "../../RHI/RHI_Implementation.h"
+#include "../../RHI/RHI_Vertex.h"
 #include "../../RHI/RHI_VertexBuffer.h"
 #include "../../RHI/RHI_IndexBuffer.h"
-#include "../../RHI/RHI_Vertex.h"
-#include "../../RHI/RHI_Texture.h"
 #include "../../Resource/ResourceCache.h"
-//=======================================
+#include "../../Resource/Import/FontImporter.h"
+//=============================================
 
 //= NAMESPACES ================
 using namespace std;
@@ -71,7 +69,7 @@ namespace Spartan
 		// Load
 		if (!m_context->GetSubsystem<ResourceCache>()->GetFontImporter()->LoadFromFile(this, file_path))
 		{
-			LOGF_ERROR("Failed to load font \"%s\"", file_path.c_str());
+			LOG_ERROR("Failed to load font \"%s\"", file_path.c_str());
 			return false;
 		}
 
@@ -82,14 +80,14 @@ namespace Spartan
 			m_char_max_height	= Max<int>(char_info.second.height, m_char_max_height);
 		}
 		
-		LOGF_INFO("Loading \"%s\" took %d ms", FileSystem::GetFileNameFromFilePath(file_path).c_str(), static_cast<int>(timer.GetElapsedTimeMs()));
+		LOG_INFO("Loading \"%s\" took %d ms", FileSystem::GetFileNameFromFilePath(file_path).c_str(), static_cast<int>(timer.GetElapsedTimeMs()));
 		return true;
 	}
 
 	void Font::SetText(const string& text, const Vector2& position)
 	{
-        bool same_text      = text == m_current_text;
-        bool has_buffers    = (m_vertex_buffer && m_index_buffer);
+        const bool same_text      = text == m_current_text;
+        const bool has_buffers    = (m_vertex_buffer && m_index_buffer);
 
 		if (same_text || !has_buffers)
 			return;

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -25,6 +25,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <fmod_errors.h>
 #include "Audio.h"
 #include "../World/Components/Transform.h"
+#include "../IO/FileStream.h"
 //========================================
 
 //= NAMESPACES ================
@@ -62,15 +63,45 @@ namespace Spartan
 		}
 	}
 
-	bool AudioClip::LoadFromFile(const std::string& file_path)
+	bool AudioClip::LoadFromFile(const string& file_path)
 	{
-		m_soundFMOD = nullptr;
-		m_channelFMOD = nullptr;
+		m_soundFMOD     = nullptr;
+		m_channelFMOD   = nullptr;
 
-		return m_playMode == Play_Memory ? CreateSound(file_path) : CreateStream(file_path);
+        // Native
+        if (FileSystem::GetExtensionFromFilePath(file_path) == EXTENSION_AUDIO)
+        {
+            auto file = make_unique<FileStream>(file_path, FileStream_Read);
+            if (!file->IsOpen())
+                return false;
+
+            SetResourceFilePath(file->ReadAs<string>());
+
+            file->Close();
+        }
+        // Foreign
+        else
+        {
+            SetResourceFilePath(file_path);
+        }
+
+		return (m_playMode == Play_Memory) ? CreateSound(GetResourceFilePath()) : CreateStream(GetResourceFilePath());
 	}
 
-	bool AudioClip::Play()
+    bool AudioClip::SaveToFile(const string& file_path)
+    {
+        auto file = make_unique<FileStream>(file_path, FileStream_Write);
+        if (!file->IsOpen())
+            return false;
+
+        file->Write(GetResourceFilePath());
+
+        file->Close();
+
+        return true;
+    }
+
+    bool AudioClip::Play()
 	{
 		// Check if the sound is playing
 		if (IsChannelValid())
@@ -250,7 +281,7 @@ namespace Spartan
 		return true;
 	}
 
-	bool AudioClip::SetRolloff(vector<Vector3> curve_points)
+	bool AudioClip::SetRolloff(const vector<Vector3>& curve_points)
 	{
 		if (!IsChannelValid())
 			return false;
@@ -379,7 +410,7 @@ namespace Spartan
 
 	void AudioClip::LogErrorFmod(int error) const
 	{
-		LOG_ERROR("AudioClip::FMOD: " + string(FMOD_ErrorString(static_cast<FMOD_RESULT>(error))));
+		LOG_ERROR("%s", FMOD_ErrorString(static_cast<FMOD_RESULT>(error)));
 	}
 
 	bool AudioClip::IsChannelValid() const

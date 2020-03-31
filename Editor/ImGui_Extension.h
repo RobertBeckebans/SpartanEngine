@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -27,6 +27,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "IconProvider.h"
 #include "ImGui/Source/imgui.h"
 #include "RHI/RHI_Texture.h"
+#include "RHI/RHI_Texture2D.h"
 #include "Rendering/Renderer.h"
 #include "Resource/ResourceCache.h"
 #include "Threading/Threading.h"
@@ -34,145 +35,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "World/World.h"
 #include "World/Components/Camera.h"
 //==================================
-
-namespace ImGuiEx
-{
-    static const ImVec4 default_tint(255, 255, 255, 255);
-
-	// Images & Image buttons
-	inline bool ImageButton(Spartan::RHI_Texture* texture, const ImVec2& size)
-	{
-		return ImGui::ImageButton
-		(
-			static_cast<ImTextureID>(texture),
-			size,
-			ImVec2(0, 0),			// uv0
-			ImVec2(1, 1),			// uv1
-			-1,						// frame padding
-			ImColor(0, 0, 0, 0),	// background
-			default_tint		    // tint
-		);
-	}
-
-	inline bool ImageButton(const Icon_Type icon, const float size)
-	{
-		return ImGui::ImageButton(
-			static_cast<ImTextureID>(IconProvider::Get().GetTextureByType(icon)),
-			ImVec2(size, size),
-			ImVec2(0, 0),			// uv0
-			ImVec2(1, 1),			// uv1
-			-1,						// frame padding
-			ImColor(0, 0, 0, 0),	// background
-			default_tint		    // tint
-		);
-	}
-
-	inline bool ImageButton(const char* id, const Icon_Type icon, const float size)
-	{
-		ImGui::PushID(id);
-		const auto pressed = ImGui::ImageButton(
-			static_cast<ImTextureID>(IconProvider::Get().GetTextureByType(icon)),
-			ImVec2(size, size),
-			ImVec2(0, 0),			// uv0
-			ImVec2(1, 1),			// uv1
-			-1,						// frame padding
-			ImColor(0, 0, 0, 0),	// background
-			default_tint		    // tint
-		);
-		ImGui::PopID();
-		return pressed;
-	}
-
-	inline void Image(const Thumbnail& thumbnail, const float size)
-	{
-		ImGui::Image(
-			static_cast<ImTextureID>(IconProvider::Get().GetTextureByThumbnail(thumbnail)),
-			ImVec2(size, size),
-			ImVec2(0, 0),
-			ImVec2(1, 1),
-			default_tint,		    // tint
-			ImColor(0, 0, 0, 0)		// border
-		);
-	}
-
-	inline void Image(Spartan::RHI_Texture* texture, const float size)
-	{
-		ImGui::Image(
-			static_cast<ImTextureID>(texture),
-			ImVec2(size, size),
-			ImVec2(0, 0),
-			ImVec2(1, 1),
-			default_tint,		    // tint
-			ImColor(0, 0, 0, 0)		// border
-		);
-	}
-
-	inline void Image(Spartan::RHI_Texture* texture, const ImVec2& size, const ImColor& tint = default_tint, const ImColor& border = ImColor(0, 0, 0, 0))
-	{
-		ImGui::Image(
-			static_cast<ImTextureID>(texture),
-			size,
-			ImVec2(0, 0),
-			ImVec2(1, 1),
-			tint,
-			border
-		);
-	}
-
-	inline void Image(const Icon_Type icon, const float size)
-	{
-		ImGui::Image(
-			static_cast<void*>(IconProvider::Get().GetTextureByType(icon)),
-			ImVec2(size, size),
-			ImVec2(0, 0),
-			ImVec2(1, 1),
-			default_tint,		    // tint
-			ImColor(0, 0, 0, 0)		// border
-		);
-	}
-
-	// Drag & Drop
-	enum DragPayloadType
-	{
-		DragPayload_Unknown,
-		DragPayload_Texture,
-		DragPayload_entity,
-		DragPayload_Model,
-		DragPayload_Audio,
-		DragPayload_Script
-	};
-
-	struct DragDropPayload
-	{
-		typedef std::variant<const char*, unsigned int> dataVariant;
-		DragDropPayload(const DragPayloadType type = DragPayload_Unknown, const dataVariant data = nullptr)
-		{
-			this->type = type;
-			this->data = data;
-		}
-		DragPayloadType type;
-		dataVariant data;
-	};
-	
-	inline void CreateDragPayload(const DragDropPayload& payload)
-	{
-		ImGui::SetDragDropPayload(reinterpret_cast<const char*>(&payload.type), reinterpret_cast<const void*>(&payload), sizeof(payload), ImGuiCond_Once);
-	}
-
-	inline DragDropPayload* ReceiveDragPayload(DragPayloadType type)
-	{
-		if (ImGui::BeginDragDropTarget())
-		{
-			if (const auto payload_imgui = ImGui::AcceptDragDropPayload(reinterpret_cast<const char*>(&type)))
-			{
-				return static_cast<DragDropPayload*>(payload_imgui->Data);
-			}
-			ImGui::EndDragDropTarget();
-		}
-
-		return nullptr;
-	}
-}
 
 class EditorHelper
 {
@@ -187,11 +49,11 @@ public:
 	void Initialize(Spartan::Context* context)
 	{
 		g_context			= context;
-		g_resource_cache	= context->GetSubsystem<Spartan::ResourceCache>().get();
-		g_world				= context->GetSubsystem<Spartan::World>().get();
-		g_threading			= context->GetSubsystem<Spartan::Threading>().get();
-		g_renderer			= context->GetSubsystem<Spartan::Renderer>().get();
-		g_input				= context->GetSubsystem<Spartan::Input>().get();
+		g_resource_cache	= context->GetSubsystem<Spartan::ResourceCache>();
+		g_world				= context->GetSubsystem<Spartan::World>();
+		g_threading			= context->GetSubsystem<Spartan::Threading>();
+		g_renderer			= context->GetSubsystem<Spartan::Renderer>();
+		g_input				= context->GetSubsystem<Spartan::Input>();
 	}
 
 	void LoadModel(const std::string& file_path) const
@@ -260,3 +122,231 @@ public:
 	std::weak_ptr<Spartan::Entity>	g_selected_entity;
 	std::function<void()>			g_on_entity_selected	= nullptr;
 };
+
+namespace ImGuiEx
+{
+    static const ImVec4 default_tint(255, 255, 255, 255);
+
+    // Images & Image buttons
+    inline bool ImageButton(Spartan::RHI_Texture* texture, const ImVec2& size)
+    {
+        return ImGui::ImageButton
+        (
+            static_cast<ImTextureID>(texture),
+            size,
+            ImVec2(0, 0),			// uv0
+            ImVec2(1, 1),			// uv1
+            -1,						// frame padding
+            ImColor(0, 0, 0, 0),	// background
+            default_tint		    // tint
+        );
+    }
+
+    inline bool ImageButton(const Icon_Type icon, const float size)
+    {
+        return ImGui::ImageButton(
+            static_cast<ImTextureID>(IconProvider::Get().GetTextureByType(icon)),
+            ImVec2(size, size),
+            ImVec2(0, 0),			// uv0
+            ImVec2(1, 1),			// uv1
+            -1,						// frame padding
+            ImColor(0, 0, 0, 0),	// background
+            default_tint		    // tint
+        );
+    }
+
+    inline bool ImageButton(const char* id, const Icon_Type icon, const float size)
+    {
+        ImGui::PushID(id);
+        const auto pressed = ImGui::ImageButton(
+            static_cast<ImTextureID>(IconProvider::Get().GetTextureByType(icon)),
+            ImVec2(size, size),
+            ImVec2(0, 0),			// uv0
+            ImVec2(1, 1),			// uv1
+            -1,						// frame padding
+            ImColor(0, 0, 0, 0),	// background
+            default_tint		    // tint
+        );
+        ImGui::PopID();
+        return pressed;
+    }
+
+    inline void Image(const Thumbnail& thumbnail, const float size)
+    {
+        ImGui::Image(
+            static_cast<ImTextureID>(IconProvider::Get().GetTextureByThumbnail(thumbnail)),
+            ImVec2(size, size),
+            ImVec2(0, 0),
+            ImVec2(1, 1),
+            default_tint,		    // tint
+            ImColor(0, 0, 0, 0)		// border
+        );
+    }
+
+    inline void Image(Spartan::RHI_Texture* texture, const float size)
+    {
+        ImGui::Image(
+            static_cast<ImTextureID>(texture),
+            ImVec2(size, size),
+            ImVec2(0, 0),
+            ImVec2(1, 1),
+            default_tint,		    // tint
+            ImColor(0, 0, 0, 0)		// border
+        );
+    }
+
+    inline void Image(Spartan::RHI_Texture* texture, const ImVec2& size, const ImColor& tint = default_tint, const ImColor& border = ImColor(0, 0, 0, 0))
+    {
+        ImGui::Image(
+            static_cast<ImTextureID>(texture),
+            size,
+            ImVec2(0, 0),
+            ImVec2(1, 1),
+            tint,
+            border
+        );
+    }
+
+    inline void Image(const Icon_Type icon, const float size)
+    {
+        ImGui::Image(
+            static_cast<void*>(IconProvider::Get().GetTextureByType(icon)),
+            ImVec2(size, size),
+            ImVec2(0, 0),
+            ImVec2(1, 1),
+            default_tint,		    // tint
+            ImColor(0, 0, 0, 0)		// border
+        );
+    }
+
+    // Drag & Drop
+    enum DragPayloadType
+    {
+        DragPayload_Unknown,
+        DragPayload_Texture,
+        DragPayload_Entity,
+        DragPayload_Model,
+        DragPayload_Audio,
+        DragPayload_Script,
+        DragPayload_Material
+    };
+
+    struct DragDropPayload
+    {
+        typedef std::variant<const char*, unsigned int> dataVariant;
+        DragDropPayload(const DragPayloadType type = DragPayload_Unknown, const dataVariant data = nullptr)
+        {
+            this->type = type;
+            this->data = data;
+        }
+        DragPayloadType type;
+        dataVariant data;
+    };
+
+    inline void CreateDragPayload(const DragDropPayload& payload)
+    {
+        ImGui::SetDragDropPayload(reinterpret_cast<const char*>(&payload.type), reinterpret_cast<const void*>(&payload), sizeof(payload), ImGuiCond_Once);
+    }
+
+    inline DragDropPayload* ReceiveDragPayload(DragPayloadType type)
+    {
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const auto payload_imgui = ImGui::AcceptDragDropPayload(reinterpret_cast<const char*>(&type)))
+            {
+                return static_cast<DragDropPayload*>(payload_imgui->Data);
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        return nullptr;
+    }
+
+    // Image slot
+    inline void ImageSlot(
+        const char* name,
+        const std::shared_ptr<Spartan::RHI_Texture>& image,
+        const std::function<void(const std::shared_ptr<Spartan::RHI_Texture>&)>& setter,
+        float offset_from_start_x   = 0.0f,
+        bool label_align_vertically = false
+    )
+    {
+        const ImVec2 slot_size  = ImVec2(80, 80);
+        const float button_size = 15.0f;
+
+        // Text
+        if (name)
+        {
+            ImGui::Text(name);
+            if (!label_align_vertically)
+            {
+                ImGui::SameLine(offset_from_start_x);
+            }
+        }
+
+        // Image
+        ImGui::BeginGroup();
+        {
+            Spartan::RHI_Texture* texture   = image.get();
+            const ImVec2 pos_image                = ImGui::GetCursorPos();
+            const ImVec2 pos_button               = ImVec2(ImGui::GetCursorPosX() + slot_size.x - button_size * 2.0f + 6.0f, ImGui::GetCursorPosY() + 1.0f);
+
+            // Remove button
+            if (image != nullptr)
+            {
+                ImGui::SetCursorPos(pos_button);
+                ImGui::PushID(static_cast<int>(pos_button.x + pos_button.y));
+                if (ImGuiEx::ImageButton("", Icon_Component_Material_RemoveTexture, button_size))
+                {
+                    texture = nullptr;
+                    setter(nullptr);
+                }
+                ImGui::PopID();
+            }
+
+            // Image
+            ImGui::SetCursorPos(pos_image);
+            ImGuiEx::Image
+            (
+                texture,
+                slot_size,
+                ImColor(255, 255, 255, 255),
+                ImColor(255, 255, 255, 128)
+            );
+
+            // Remove button - Does nothing, drawn again just to be visible
+            if (texture != nullptr)
+            {
+                ImGui::SetCursorPos(pos_button);
+                ImGuiEx::ImageButton("", Icon_Component_Material_RemoveTexture, button_size);
+            }
+        }
+        ImGui::EndGroup();
+
+        // Drop target
+        if (auto payload = ImGuiEx::ReceiveDragPayload(ImGuiEx::DragPayload_Texture))
+        {
+            try
+            {
+                if (const auto tex = EditorHelper::Get().g_resource_cache->Load<Spartan::RHI_Texture2D>(std::get<const char*>(payload->data)))
+                {
+                    setter(tex);
+                }
+            }
+            catch (const std::bad_variant_access& e) { LOG_ERROR("%s", e.what()); }
+        }
+    }
+
+    inline void Tooltip(const char* text)
+    {
+        if (!text)
+            return;
+
+        if (ImGui::IsItemHovered())
+        {
+            ImGui::BeginTooltip();
+            ImGui::Text(text);
+            ImGui::EndTooltip();
+        }
+    }
+}

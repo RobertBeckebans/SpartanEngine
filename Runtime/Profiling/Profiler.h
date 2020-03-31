@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -27,13 +27,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "TimeBlock.h"
 #include "../Core/EngineDefs.h"
 #include "../Core/ISubsystem.h"
+#include "../Core/Stopwatch.h"
 //=============================
 
-#define TIME_BLOCK_START_MULTI(profiler)	        profiler->TimeBlockStart(__FUNCTION__, true, true);
-#define TIME_BLOCK_START_CPU_NAMED(profiler, name)  profiler->TimeBlockStart(name, true, false);
-#define TIME_BLOCK_START_CPU(profiler)		        profiler->TimeBlockStart(__FUNCTION__, true, false);
-#define TIME_BLOCK_START_GPU(profiler)		        profiler->TimeBlockStart(__FUNCTION__, false, true);
-#define TIME_BLOCK_END(profiler)			        profiler->TimeBlockEnd();
+#define TIME_BLOCK_START_NAMED(profiler, name)  profiler->TimeBlockStart(name, Spartan::TimeBlock_Type::TimeBlock_Cpu);
+#define TIME_BLOCK_END(profiler)			    profiler->TimeBlockEnd();
+#define SCOPED_TIME_BLOCK(profiler)             ScopedTimeBlock time_block = ScopedTimeBlock(profiler, __FUNCTION__)
 
 namespace Spartan
 {
@@ -54,16 +53,9 @@ namespace Spartan
         void Tick(float delta_time) override;
 		//===================================
 
-        // Events
-        void OnFrameStart(float delta_time);
         void OnFrameEnd();
-
-		// Time block
-		bool TimeBlockStart(const std::string& func_name, bool profile_cpu = true, bool profile_gpu = false);
-		bool TimeBlockEnd();
-
-        // Stutter detection
-        void DetectStutter();
+		void TimeBlockStart(const char* func_name, TimeBlock_Type type, RHI_CommandList* cmd_list = nullptr);
+		void TimeBlockEnd();
 
         // Properties
 		void SetProfilingEnabledCpu(const bool enabled)	{ m_profile_cpu_enabled = enabled; }
@@ -74,13 +66,13 @@ namespace Spartan
 		auto GetTimeGpu() const						    { return m_time_gpu_ms; }
 		auto GetTimeFrame() const						{ return m_time_frame_ms; }
 		auto GetFps() const							    { return m_fps; }
-		auto GetUpdateInterval()						{ return m_profiling_interval_sec; }
+		auto GetUpdateInterval() const { return m_profiling_interval_sec; }
 		void SetUpdateInterval(float internval)			{ m_profiling_interval_sec = internval; }
-		const auto& GpuGetName()					    { return m_gpu_name; }
-        auto GpuGetMemoryAvailable()			        { return m_gpu_memory_available; }
-        auto GpuGetMemoryUsed()					        { return m_gpu_memory_used; }
-        bool IsCpuStuttering()                          { return m_is_stuttering_cpu; }
-        bool IsGpuStuttering()                          { return m_is_stuttering_gpu; }
+		const auto& GpuGetName() const { return m_gpu_name; }
+        auto GpuGetMemoryAvailable() const { return m_gpu_memory_available; }
+        auto GpuGetMemoryUsed() const { return m_gpu_memory_used; }
+        bool IsCpuStuttering() const { return m_is_stuttering_cpu; }
+        bool IsGpuStuttering() const { return m_is_stuttering_gpu; }
 		
 		// Metrics - RHI
 		uint32_t m_rhi_draw_calls				= 0;
@@ -93,6 +85,8 @@ namespace Spartan
 		uint32_t m_rhi_bindings_shader_pixel	= 0;
         uint32_t m_rhi_bindings_shader_compute  = 0;
 		uint32_t m_rhi_bindings_render_target	= 0;
+        uint32_t m_rhi_bindings_descriptor_set  = 0;
+        uint32_t m_rhi_bindings_pipeline        = 0;
 
 		// Metrics - Renderer
 		uint32_t m_renderer_meshes_rendered = 0;
@@ -116,11 +110,12 @@ namespace Spartan
             m_rhi_bindings_shader_pixel     = 0;
             m_rhi_bindings_shader_compute   = 0;
             m_rhi_bindings_render_target    = 0;
+            m_rhi_bindings_descriptor_set   = 0;
+            m_rhi_bindings_pipeline         = 0;
         }
 
-		TimeBlock* GetNextTimeBlock();
-		TimeBlock* GetLastIncompleteTimeBlock();
-		TimeBlock* GetSecondLastIncompleteTimeBlock();
+		TimeBlock* GetNewTimeBlock();
+		TimeBlock* GetLastIncompleteTimeBlock(TimeBlock_Type type = TimeBlock_Undefined);
 		void ComputeFps(float delta_time);
 		void UpdateRhiMetricsString();
 
@@ -130,10 +125,10 @@ namespace Spartan
 		float m_profiling_interval_sec		= 0.3f;
 		float m_time_since_profiling_sec	= m_profiling_interval_sec;
 
-		// Time blocks
+		// Time blocks (double buffered)
 		uint32_t m_time_block_capacity	= 200;
 		uint32_t m_time_block_count		= 0;
-		std::vector<TimeBlock> m_time_blocks;
+		std::vector<TimeBlock> m_time_blocks_write;
         std::vector<TimeBlock> m_time_blocks_read;
 
 		// FPS
@@ -157,10 +152,29 @@ namespace Spartan
 
 		// Misc
 		std::string m_metrics;
-		bool m_profile = false;
+        Stopwatch m_timer;
+		bool m_profile = true;
 	
 		// Dependencies
 		ResourceCache* m_resource_manager	= nullptr;
 		Renderer* m_renderer				= nullptr;
 	};
+
+    class ScopedTimeBlock
+    {
+    public:
+        ScopedTimeBlock(Profiler* profiler, const char* name = nullptr)
+        {
+            this->profiler = profiler;
+            profiler->TimeBlockStart(name, Spartan::TimeBlock_Type::TimeBlock_Cpu);
+        }
+
+        ~ScopedTimeBlock()
+        {
+            profiler->TimeBlockEnd();
+        }
+
+    private:
+        Profiler* profiler = nullptr;
+    };
 }

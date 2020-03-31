@@ -1,5 +1,5 @@
 ﻿/*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -56,7 +56,7 @@ namespace Spartan
 			switch (error_code)
 			{
 				// Generic errors
-				case FT_Err_Cannot_Open_Resource:	LOG_ERROR("FreeType: Cannot open resource.") break;
+                case FT_Err_Cannot_Open_Resource:	LOG_ERROR("FreeType: Cannot open resource."); break;
 				case FT_Err_Unknown_File_Format:	LOG_ERROR("FreeType: Unknown file format."); break;
 				case FT_Err_Invalid_File_Format:	LOG_ERROR("FreeType: Broken file."); break;
 				case FT_Err_Invalid_Version:		LOG_ERROR("FreeType: Invalid FreeType version."); break;
@@ -220,7 +220,7 @@ namespace Spartan
 		FT_Int minor;
 		FT_Int rev;
 		FT_Library_Version(m_library, &major, &minor, &rev);
-        m_context->GetSubsystem<Settings>()->m_versionFreeType = to_string(major) + "." + to_string(minor) + "." + to_string(rev);
+        m_context->GetSubsystem<Settings>()->RegisterThirdPartyLib("FreeType", to_string(major) + "." + to_string(minor) + "." + to_string(rev), "https://download.savannah.gnu.org/releases/freetype/");
 	}
 
 	FontImporter::~FontImporter()
@@ -297,9 +297,9 @@ namespace Spartan
 			{
 				for (uint32_t x = 0; x < bitmap->width; x++)
 				{
-					uint32_t _x	= pen_x + x;
-					uint32_t _y	= pen_y + y;
-					auto atlas_pos	= _x + _y * atlas_width;
+                    const uint32_t _x	= pen_x + x;
+                    const uint32_t _y	= pen_y + y;
+                    const auto atlas_pos	= _x + _y * atlas_width;
 					SPARTAN_ASSERT(atlas_buffer.size() > atlas_pos);
 
 					switch (bitmap->pixel_mode) 
@@ -332,10 +332,10 @@ namespace Spartan
 			glyph.yBottom			= pen_y + bitmap->rows;
 			glyph.width				= glyph.xRight - glyph.xLeft;
 			glyph.height			= glyph.yBottom - glyph.yTop;
-			glyph.uvXLeft			= (float)glyph.xLeft / (float)atlas_width;
-			glyph.uvXRight			= (float)glyph.xRight / (float)atlas_width;
-			glyph.uvYTop			= (float)glyph.yTop / (float)atlas_height;
-			glyph.uvYBottom			= (float)glyph.yBottom / (float)atlas_height;
+			glyph.uvXLeft			= static_cast<float>(glyph.xLeft) / static_cast<float>(atlas_width);
+			glyph.uvXRight			= static_cast<float>(glyph.xRight) / static_cast<float>(atlas_width);
+			glyph.uvYTop			= static_cast<float>(glyph.yTop) / static_cast<float>(atlas_height);
+			glyph.uvYBottom			= static_cast<float>(glyph.yBottom) / static_cast<float>(atlas_height);
 			glyph.descent			= row_height - face->glyph->bitmap_top;
 			glyph.horizontalOffset	= face->glyph->advance.x >> 6;
 
@@ -362,7 +362,7 @@ namespace Spartan
 		FT_Done_Face(face);
 
 		// Create a font texture atlas form the provided data
-		font->SetAtlas(move(static_pointer_cast<RHI_Texture>(make_shared<RHI_Texture2D>(m_context, atlas_width, atlas_height, Format_R8_UNORM, atlas_buffer))));
+		font->SetAtlas(move(static_pointer_cast<RHI_Texture>(make_shared<RHI_Texture2D>(m_context, atlas_width, atlas_height, RHI_Format_R8_Unorm, atlas_buffer))));
 
 		return true;
 	}

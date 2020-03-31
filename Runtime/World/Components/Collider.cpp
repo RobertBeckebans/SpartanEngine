@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -39,8 +39,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //=============================================================
 
 //= NAMESPACES ================
-using namespace Spartan::Math;
 using namespace std;
+using namespace Spartan::Math;
 //=============================
 
 namespace Spartan
@@ -59,15 +59,10 @@ namespace Spartan
 		REGISTER_ATTRIBUTE_VALUE_SET(m_shapeType, SetShapeType, ColliderShape);
 	}
 
-	Collider::~Collider()
-	{
-
-	}
-
-	void Collider::OnInitialize()
+    void Collider::OnInitialize()
 	{
 		// If there is a mesh, use it's bounding box
-		if (auto renderable = GetEntity_PtrRaw()->GetRenderable_PtrRaw())
+		if (auto renderable = GetEntity()->GetRenderable())
 		{
 			m_center	= Vector3::Zero;
 			m_size		= renderable->GetAabb().GetSize();
@@ -140,7 +135,7 @@ namespace Spartan
 	void Collider::Shape_Update()
 	{
 		Shape_Release();
-		Vector3 worldScale = GetTransform()->GetScale();
+        const Vector3 worldScale = GetTransform()->GetScale();
 
 		switch (m_shapeType)
 		{
@@ -175,17 +170,17 @@ namespace Spartan
 
 		case ColliderShape_Mesh:
 			// Get Renderable
-			Renderable* renderable = GetEntity_PtrRaw()->GetComponent<Renderable>().get();
+			Renderable* renderable = GetEntity()->GetComponent<Renderable>();
 			if (!renderable)
 			{
-				LOG_WARNING("Collider::Shape_Update: Can't construct mesh shape, there is no Renderable component attached.");
+				LOG_WARNING("Can't construct mesh shape, there is no Renderable component attached.");
 				return;
 			}
 
 			// Validate vertex count
 			if (renderable->GeometryVertexCount() >= m_vertexLimit)
 			{
-				LOG_WARNING("Collider::Shape_Update: No user defined collider with more than " + to_string(m_vertexLimit) + " vertices is allowed.");
+				LOG_WARNING("No user defined collider with more than %d vertices is allowed.", m_vertexLimit);
 				return;
 			}
 
@@ -196,7 +191,7 @@ namespace Spartan
 
 			if (vertices.empty())
 			{
-				LOG_WARNING("Collider::UpdateShape: No vertices.");
+				LOG_WARNING("No vertices.");
 				return;
 			}
 
@@ -204,7 +199,7 @@ namespace Spartan
 			m_shape = new btConvexHullShape(
 				(btScalar*)&vertices[0],					// points
 				renderable->GeometryVertexCount(),			// point count
-				(uint32_t)sizeof(RHI_Vertex_PosTexNorTan));	// stride
+				static_cast<uint32_t>(sizeof(RHI_Vertex_PosTexNorTan)));	// stride
 
 			// Scaling has to be done before (potential) optimization
 			m_shape->setLocalScaling(ToBtVector3(worldScale));
@@ -212,7 +207,7 @@ namespace Spartan
 			// Optimize if requested
 			if (m_optimize)
 			{
-				auto hull = (btConvexHullShape*)m_shape;
+				auto hull = static_cast<btConvexHullShape*>(m_shape);
 				hull->optimizeConvexHull();
 				hull->initializePolyhedralFeatures();
 			}
@@ -231,16 +226,16 @@ namespace Spartan
 		safe_delete(m_shape);
 	}
 
-	void Collider::RigidBody_SetShape(btCollisionShape* shape)
-	{
+	void Collider::RigidBody_SetShape(btCollisionShape* shape) const
+    {
 		if (const auto& rigidBody = m_entity->GetComponent<RigidBody>())
 		{
 			rigidBody->SetShape(shape);
 		}
 	}
 
-	void Collider::RigidBody_SetCenterOfMass(const Vector3& center)
-	{
+	void Collider::RigidBody_SetCenterOfMass(const Vector3& center) const
+    {
 		if (const auto& rigidBody = m_entity->GetComponent<RigidBody>())
 		{
 			rigidBody->SetCenterOfMass(center);

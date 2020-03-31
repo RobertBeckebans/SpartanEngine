@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -43,13 +43,12 @@ namespace Spartan
 		bool Load(const std::string& file_path, RHI_Texture* texture, bool generate_mipmaps = true);
 
 	private:	
-		bool GetBitsFromFibitmap(std::vector<std::byte>* data, FIBITMAP* bitmap, uint32_t width, uint32_t height, uint32_t channels);
+		bool GetBitsFromFibitmap(std::vector<std::byte>* data, FIBITMAP* bitmap, uint32_t width, uint32_t height, uint32_t channels) const;
 		void GenerateMipmaps(FIBITMAP* bitmap, RHI_Texture* texture, uint32_t width, uint32_t height, uint32_t channels);
 
 		uint32_t ComputeChannelCount(FIBITMAP* bitmap) const;
 		uint32_t ComputeBitsPerChannel(FIBITMAP* bitmap) const;
-		RHI_Format ComputeTextureFormat(uint32_t bpp, uint32_t channels) const;
-		bool IsGrayscale(FIBITMAP* bitmap) const;
+		RHI_Format ComputeTextureFormat(uint32_t bytes_per_channel, uint32_t channels) const;
 		FIBITMAP* ApplyBitmapCorrections(FIBITMAP* bitmap) const;
 		FIBITMAP* _FreeImage_ConvertTo32Bits(FIBITMAP* bitmap) const;
 		FIBITMAP* _FreeImage_Rescale(FIBITMAP* bitmap, uint32_t width, uint32_t height) const;

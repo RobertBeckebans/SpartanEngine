@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -30,11 +30,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "../../Physics/Physics.h"
 #include "../../Physics/BulletPhysicsHelper.h"
 #pragma warning(push, 0) // Hide warnings which belong to Bullet
-#include <BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h>
-#include "BulletDynamics/ConstraintSolver/btHingeConstraint.h"
-#include "BulletDynamics/ConstraintSolver/btSliderConstraint.h"
-#include "BulletDynamics/ConstraintSolver/btConeTwistConstraint.h"
-#include "BulletDynamics/ConstraintSolver/btPoint2PointConstraint.h"
+#include <BulletDynamics/ConstraintSolver/btHingeConstraint.h>
+#include <BulletDynamics/ConstraintSolver/btSliderConstraint.h>
+#include <BulletDynamics/ConstraintSolver/btConeTwistConstraint.h>
+#include <BulletDynamics/ConstraintSolver/btPoint2PointConstraint.h>
 #pragma warning(pop)
 //==================================================================
 
@@ -53,7 +52,7 @@ namespace Spartan
 		m_errorReduction			= 0.0f;
 		m_constraintForceMixing		= 0.0f;
 		m_constraintType			= ConstraintType_Point;
-		m_physics					= GetContext()->GetSubsystem<Physics>().get();
+		m_physics					= GetContext()->GetSubsystem<Physics>();
 
 		REGISTER_ATTRIBUTE_VALUE_VALUE(m_errorReduction, float);
 		REGISTER_ATTRIBUTE_VALUE_VALUE(m_constraintForceMixing, float);
@@ -207,16 +206,14 @@ namespace Spartan
 	{
 		if (m_constraint)
 		{
-			RigidBody* rigid_body_own	= m_entity->GetComponent<RigidBody>().get();
-			RigidBody* rigid_body_other	= !m_bodyOther.expired() ? m_bodyOther.lock()->GetComponent<RigidBody>().get() : nullptr;
+			RigidBody* rigid_body_own	= m_entity->GetComponent<RigidBody>();
+			RigidBody* rigid_body_other	= !m_bodyOther.expired() ? m_bodyOther.lock()->GetComponent<RigidBody>() : nullptr;
 
 			// Make both bodies aware of the removal of this constraint
 			if (rigid_body_own)	rigid_body_own->RemoveConstraint(this);
 			if (rigid_body_other) rigid_body_other->RemoveConstraint(this);
 
-			m_physics->GetWorld()->removeConstraint(m_constraint);
-			delete m_constraint;
-			m_constraint = nullptr;
+			m_physics->RemoveConstraint(m_constraint);
 		}
 	}
 
@@ -225,13 +222,13 @@ namespace Spartan
 		if (!m_constraint || m_bodyOther.expired())
 			return;
 
-		RigidBody* rigid_body_own			= m_entity->GetComponent<RigidBody>().get();
-		RigidBody* rigid_body_other		= !m_bodyOther.expired() ? m_bodyOther.lock()->GetComponent<RigidBody>().get() : nullptr;
-		btRigidBody* bt_own_body			= rigid_body_own ? rigid_body_own->GetBtRigidBody() : nullptr;
-		btRigidBody* bt_other_body		= rigid_body_other ? rigid_body_other->GetBtRigidBody() : nullptr;
+		RigidBody* rigid_body_own   = m_entity->GetComponent<RigidBody>();
+		RigidBody* rigid_body_other = !m_bodyOther.expired() ? m_bodyOther.lock()->GetComponent<RigidBody>() : nullptr;
+		btRigidBody* bt_own_body    = rigid_body_own ? rigid_body_own->GetBtRigidBody() : nullptr;
+		btRigidBody* bt_other_body  = rigid_body_other ? rigid_body_other->GetBtRigidBody() : nullptr;
 
-		Vector3 own_body_scaled_position	= m_position * m_transform->GetScale() - rigid_body_own->GetCenterOfMass();
-		Vector3 other_body_scaled_position = !m_bodyOther.expired() ? m_positionOther * rigid_body_other->GetTransform()->GetScale() - rigid_body_other->GetCenterOfMass() : m_positionOther;
+		Vector3 own_body_scaled_position    = m_position * m_transform->GetScale() - rigid_body_own->GetCenterOfMass();
+		Vector3 other_body_scaled_position  = !m_bodyOther.expired() ? m_positionOther * rigid_body_other->GetTransform()->GetScale() - rigid_body_other->GetCenterOfMass() : m_positionOther;
 
 		switch (m_constraint->getConstraintType())
 		{
@@ -283,8 +280,8 @@ namespace Spartan
 		ReleaseConstraint();
 
 		// Make sure we have two bodies
-		RigidBody* rigid_body_own	= m_entity->GetComponent<RigidBody>().get();
-		RigidBody* rigid_body_other	= !m_bodyOther.expired() ? m_bodyOther.lock()->GetComponent<RigidBody>().get() : nullptr;
+		RigidBody* rigid_body_own	= m_entity->GetComponent<RigidBody>();
+		RigidBody* rigid_body_other	= !m_bodyOther.expired() ? m_bodyOther.lock()->GetComponent<RigidBody>() : nullptr;
 		if (!rigid_body_own || !rigid_body_other)
 		{
 			LOG_INFO("A RigidBody component is still initializing, deferring construction...");
@@ -360,7 +357,7 @@ namespace Spartan
 			}
 
 		    ApplyLimits();
-		    m_physics->GetWorld()->addConstraint(m_constraint, !m_collisionWithLinkedBody);
+		    m_physics->AddConstraint(m_constraint, m_collisionWithLinkedBody);
 		}
 	}
 

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,11 +19,11 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES =================
+//= INCLUDES ===============
 #include "IconProvider.h"
 #include "ImGui_Extension.h"
-#include "RHI/RHI_Texture2D.h"
-//============================
+#include "Rendering\Model.h"
+//==========================
 
 //= NAMESPACES ==========
 using namespace std;
@@ -45,42 +45,45 @@ IconProvider::~IconProvider()
 void IconProvider::Initialize(Context* context)
 {
 	m_context = context;
-	string data_dir = m_context->GetSubsystem<ResourceCache>()->GetDataDirectory();
+    const string data_dir = m_context->GetSubsystem<ResourceCache>()->GetDataDirectory() + "/";
 
 	// Load standard icons
-	Thumbnail_Load(data_dir + "Icons\\component_componentOptions.png",		Icon_Component_Options);	
-	Thumbnail_Load(data_dir + "Icons\\component_audioListener.png",			Icon_Component_AudioListener);
-	Thumbnail_Load(data_dir + "Icons\\component_audioSource.png",			Icon_Component_AudioSource);	
-	Thumbnail_Load(data_dir + "Icons\\component_camera.png",				Icon_Component_Camera);	
-	Thumbnail_Load(data_dir + "Icons\\component_collider.png",				Icon_Component_Collider);	
-	Thumbnail_Load(data_dir + "Icons\\component_light.png",					Icon_Component_Light);
-	Thumbnail_Load(data_dir + "Icons\\component_material.png",				Icon_Component_Material);
-	Thumbnail_Load(data_dir + "Icons\\component_material_removeTexture.png",Icon_Component_Material_RemoveTexture);
-	Thumbnail_Load(data_dir + "Icons\\component_meshCollider.png",			Icon_Component_MeshCollider);	
-	Thumbnail_Load(data_dir + "Icons\\component_renderable.png",			Icon_Component_Renderable);	
-	Thumbnail_Load(data_dir + "Icons\\component_rigidBody.png",				Icon_Component_RigidBody);
-	Thumbnail_Load(data_dir + "Icons\\component_script.png",				Icon_Component_Script);	
-	Thumbnail_Load(data_dir + "Icons\\component_transform.png",				Icon_Component_Transform);
-	Thumbnail_Load(data_dir + "Icons\\console_info.png",					Icon_Console_Info);	
-	Thumbnail_Load(data_dir + "Icons\\console_warning.png",					Icon_Console_Warning);
-	Thumbnail_Load(data_dir + "Icons\\console_error.png",					Icon_Console_Error);	
-	Thumbnail_Load(data_dir + "Icons\\button_play.png",						Icon_Button_Play);
-	Thumbnail_Load(data_dir + "Icons\\profiler.png",						Icon_Profiler);
-	Thumbnail_Load(data_dir + "Icons\\resource_cache.png",					Icon_ResourceCache);
-	Thumbnail_Load(data_dir + "Icons\\file.png",							Thumbnail_File_Default);	
-	Thumbnail_Load(data_dir + "Icons\\folder.png",							Thumbnail_Folder);	
-	Thumbnail_Load(data_dir + "Icons\\audio.png",							Thumbnail_File_Audio);	
-	Thumbnail_Load(data_dir + "Icons\\model.png",							Thumbnail_File_Model);	
-	Thumbnail_Load(data_dir + "Icons\\scene.png",							Thumbnail_File_Scene);	
-	Thumbnail_Load(data_dir + "Icons\\material.png",						Thumbnail_File_Material);
-	Thumbnail_Load(data_dir + "Icons\\shader.png",							Thumbnail_File_Shader);
-	Thumbnail_Load(data_dir + "Icons\\xml.png",								Thumbnail_File_Xml);
-	Thumbnail_Load(data_dir + "Icons\\dll.png",								Thumbnail_File_Dll);
-	Thumbnail_Load(data_dir + "Icons\\txt.png",								Thumbnail_File_Txt);
-	Thumbnail_Load(data_dir + "Icons\\ini.png",								Thumbnail_File_Ini);
-	Thumbnail_Load(data_dir + "Icons\\exe.png",								Thumbnail_File_Exe);
-	Thumbnail_Load(data_dir + "Icons\\script.png",							Thumbnail_File_Script);
-	Thumbnail_Load(data_dir + "Icons\\font.png",							Thumbnail_File_Font);
+	Thumbnail_Load(data_dir + "Icons/component_componentOptions.png",		Icon_Component_Options);	
+	Thumbnail_Load(data_dir + "Icons/component_audioListener.png",			Icon_Component_AudioListener);
+	Thumbnail_Load(data_dir + "Icons/component_audioSource.png",			Icon_Component_AudioSource);	
+	Thumbnail_Load(data_dir + "Icons/component_camera.png",				    Icon_Component_Camera);	
+	Thumbnail_Load(data_dir + "Icons/component_collider.png",				Icon_Component_Collider);	
+	Thumbnail_Load(data_dir + "Icons/component_light.png",					Icon_Component_Light);
+	Thumbnail_Load(data_dir + "Icons/component_material.png",				Icon_Component_Material);
+	Thumbnail_Load(data_dir + "Icons/component_material_removeTexture.png", Icon_Component_Material_RemoveTexture);
+	Thumbnail_Load(data_dir + "Icons/component_meshCollider.png",			Icon_Component_MeshCollider);	
+	Thumbnail_Load(data_dir + "Icons/component_renderable.png",			    Icon_Component_Renderable);	
+	Thumbnail_Load(data_dir + "Icons/component_rigidBody.png",				Icon_Component_RigidBody);
+    Thumbnail_Load(data_dir + "Icons/component_softBody.png",               Icon_Component_SoftBody);
+	Thumbnail_Load(data_dir + "Icons/component_script.png",				    Icon_Component_Script);	
+	Thumbnail_Load(data_dir + "Icons/component_transform.png",				Icon_Component_Transform);
+    Thumbnail_Load(data_dir + "Icons/component_terrain.png",                Icon_Component_Terrain);
+    Thumbnail_Load(data_dir + "Icons/component_environment.png",            Icon_Component_Environment);
+	Thumbnail_Load(data_dir + "Icons/console_info.png",					    Icon_Console_Info);	
+	Thumbnail_Load(data_dir + "Icons/console_warning.png",					Icon_Console_Warning);
+	Thumbnail_Load(data_dir + "Icons/console_error.png",					Icon_Console_Error);	
+	Thumbnail_Load(data_dir + "Icons/button_play.png",						Icon_Button_Play);
+	Thumbnail_Load(data_dir + "Icons/profiler.png",						    Icon_Profiler);
+	Thumbnail_Load(data_dir + "Icons/resource_cache.png",					Icon_ResourceCache);
+	Thumbnail_Load(data_dir + "Icons/file.png",							    Thumbnail_File_Default);	
+	Thumbnail_Load(data_dir + "Icons/folder.png",							Thumbnail_Folder);	
+	Thumbnail_Load(data_dir + "Icons/audio.png",							Thumbnail_File_Audio);	
+	Thumbnail_Load(data_dir + "Icons/model.png",							Thumbnail_File_Model);	
+	Thumbnail_Load(data_dir + "Icons/scene.png",							Thumbnail_File_Scene);	
+	Thumbnail_Load(data_dir + "Icons/material.png",						    Thumbnail_File_Material);
+	Thumbnail_Load(data_dir + "Icons/shader.png",							Thumbnail_File_Shader);
+	Thumbnail_Load(data_dir + "Icons/xml.png",								Thumbnail_File_Xml);
+	Thumbnail_Load(data_dir + "Icons/dll.png",								Thumbnail_File_Dll);
+	Thumbnail_Load(data_dir + "Icons/txt.png",								Thumbnail_File_Txt);
+	Thumbnail_Load(data_dir + "Icons/ini.png",								Thumbnail_File_Ini);
+	Thumbnail_Load(data_dir + "Icons/exe.png",								Thumbnail_File_Exe);
+	Thumbnail_Load(data_dir + "Icons/script.png",							Thumbnail_File_Script);
+	Thumbnail_Load(data_dir + "Icons/font.png",							    Thumbnail_File_Font);
 }
 
 RHI_Texture* IconProvider::GetTextureByType(Icon_Type type)

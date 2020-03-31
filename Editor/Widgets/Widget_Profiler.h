@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -67,7 +67,8 @@ public:
 private:
 	void ShowCPU();
 	void ShowGPU();
-	void ShowPlot(std::vector<float>& data, Metric& metric, float time_value, bool is_stuttering);
+    void ShowTimeBlock(const Spartan::TimeBlock& time_block, float total_time) const;
+	void ShowPlot(std::vector<float>& data, Metric& metric, float time_value, bool is_stuttering) const;
 
 	std::vector<float> m_plot_times_cpu;
 	std::vector<float> m_plot_times_gpu;
@@ -75,4 +76,5 @@ private:
 	Metric m_metric_cpu;
 	Metric m_metric_gpu;
 	Spartan::Profiler* m_profiler;
+    float m_tree_depth_stride = 10;
 };

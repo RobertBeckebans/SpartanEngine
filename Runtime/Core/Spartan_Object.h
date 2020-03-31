@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -23,6 +23,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 //= INCLUDES ==================
 #include "../Core/EngineDefs.h"
+#include <string>
 //=============================
 
 namespace Spartan
@@ -34,13 +35,15 @@ namespace Spartan
 	public:
 		Spartan_Object() { m_id = GenerateId(); }
 
-		const uint32_t GetId() const	{ return m_id; }
-		void SetId(const uint32_t id)	{ m_id = id; }
-
-		static uint32_t GenerateId() { return ++g_id;}
+		const uint32_t GetId()          const { return m_id; }
+		void SetId(const uint32_t id)	      { m_id = id; }
+        static uint32_t GenerateId()          { return ++g_id; }
+        const uint64_t GetSizeCpu()     const { return m_size_cpu; }
+        const std::string& GetName()    const { return m_name; }
 
 	protected:
-		uint64_t m_size = 0;
-		uint32_t m_id	= 0;	
+        std::string m_name;
+		uint32_t m_id	    = 0;
+        uint64_t m_size_cpu = 0;
 	};
 }

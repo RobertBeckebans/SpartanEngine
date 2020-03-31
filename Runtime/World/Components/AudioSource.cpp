@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -85,7 +85,6 @@ namespace Spartan
 	
 	void AudioSource::Serialize(FileStream* stream)
 	{
-		stream->Write(m_file_path);
 		stream->Write(m_mute);
 		stream->Write(m_play_on_start);
 		stream->Write(m_loop);
@@ -93,11 +92,17 @@ namespace Spartan
 		stream->Write(m_volume);
 		stream->Write(m_pitch);
 		stream->Write(m_pan);
+
+        const bool has_audio_clip = m_audio_clip != nullptr;
+        stream->Write(has_audio_clip);
+        if (has_audio_clip)
+        {
+            stream->Write(m_audio_clip->GetResourceName());
+        }
 	}
 	
 	void AudioSource::Deserialize(FileStream* stream)
 	{
-		stream->Read(&m_file_path);
 		stream->Read(&m_mute);
 		stream->Read(&m_play_on_start);
 		stream->Read(&m_loop);
@@ -105,28 +110,31 @@ namespace Spartan
 		stream->Read(&m_volume);
 		stream->Read(&m_pitch);
 		stream->Read(&m_pan);
-	
-		// ResourceManager will return cached audio clip if it's already loaded
-        SetAudioClip(m_context->GetSubsystem<ResourceCache>()->Load<AudioClip>(m_file_path));
+
+        if (stream->ReadAs<bool>())
+        {
+            m_audio_clip = m_context->GetSubsystem<ResourceCache>()->GetByName<AudioClip>(stream->ReadAs<string>());
+        }
 	}
 
-	void AudioSource::SetAudioClip(const shared_ptr<AudioClip>& audio_clip)
-	{
-		if (!audio_clip)
-		{
-			LOG_ERROR_INVALID_PARAMETER();
-			return;
-		}
-		m_audio_clip = audio_clip;
-	}
+    void AudioSource::SetAudioClip(const string& file_path)
+    {
+        // Create and load the audio clip
+        auto audio_clip = make_shared<AudioClip>(m_context);
+        if (audio_clip->LoadFromFile(file_path))
+        {
+            // In order for the component to guarantee serialization/deserialization, we cache the audio clip
+            m_audio_clip = m_context->GetSubsystem<ResourceCache>()->Cache(audio_clip);
+        }
+    }
 
-	string AudioSource::GetAudioClipName()
-	{
+    string AudioSource::GetAudioClipName() const
+    {
 		return m_audio_clip ? m_audio_clip->GetResourceName() : "";
 	}
 	
-	bool AudioSource::Play()
-	{
+	bool AudioSource::Play() const
+    {
 		if (!m_audio_clip)
 			return false;
 	
@@ -140,8 +148,8 @@ namespace Spartan
 		return true;
 	}
 	
-	bool AudioSource::Stop()
-	{
+	bool AudioSource::Stop() const
+    {
 		if (!m_audio_clip)
 			return false;
 	
@@ -164,7 +172,7 @@ namespace Spartan
 	
 		// Priority for the channel, from 0 (most important) 
 		// to 256 (least important), default = 128.
-		m_priority = (int)Clamp(priority, 0, 255);
+		m_priority = static_cast<int>(Clamp(priority, 0, 255));
 		m_audio_clip->SetPriority(m_priority);
 	}
 	

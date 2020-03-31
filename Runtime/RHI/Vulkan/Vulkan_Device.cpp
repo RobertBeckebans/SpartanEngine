@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -20,13 +20,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
 //= IMPLEMENTATION ===============
+#ifdef API_GRAPHICS_VULKAN
 #include "../RHI_Implementation.h"
-#ifdef API_GRAPHICS_VULKAN 
 //================================
 
 //= INCLUDES ========================
 #include <string>
 #include "../RHI_Device.h"
+#include "../RHI_CommandList.h"
 #include "../../Logging/Log.h"
 #include "../../Core/Settings.h"
 #include "../../Core/Context.h"
@@ -41,171 +42,6 @@ using namespace Spartan::Math;
 
 namespace Spartan
 {
-    namespace _Vulkan_Device
-    {
-        static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
-            VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
-            VkDebugUtilsMessageTypeFlagsEXT message_type,
-            const VkDebugUtilsMessengerCallbackDataEXT* p_callback_data,
-            void* p_user_data
-        ) {
-            auto type = Spartan::Log_Info;
-            type = message_severity == VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT  ? Log_Warning : type;
-            type = message_severity == VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT    ? Log_Error : type;
-
-            Log::m_caller_name = "Vulkan";
-            Log::Write(p_callback_data->pMessage, type);
-            Log::m_caller_name = "";
-
-            return VK_FALSE;
-        }
-
-        inline VkResult debug_create(RHI_Device* rhi_device, const VkDebugUtilsMessengerCreateInfoEXT* create_info)
-        {
-            if (const auto func = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(rhi_device->GetContextRhi()->instance, "vkCreateDebugUtilsMessengerEXT")))
-                return func(rhi_device->GetContextRhi()->instance, create_info, nullptr, &rhi_device->GetContextRhi()->callback_handle);
-
-            return VK_ERROR_EXTENSION_NOT_PRESENT;
-        }
-
-        inline void debug_destroy(RHI_Context* context)
-        {
-            if (!context->validation_enabled)
-                return;
-
-            if (const auto func = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(context->instance, "vkDestroyDebugUtilsMessengerEXT")))
-            {
-                func(context->instance, context->callback_handle, nullptr);
-            }
-        }
-
-        inline QueueFamilyIndices get_family_indices(RHI_Device* rhi_device, VkSurfaceKHR& surface, const VkPhysicalDevice& _physical_device)
-        {
-            QueueFamilyIndices indices;
-
-            uint32_t queue_family_count = 0;
-            vkGetPhysicalDeviceQueueFamilyProperties(_physical_device, &queue_family_count, nullptr);
-
-            std::vector<VkQueueFamilyProperties> queue_family_properties(queue_family_count);
-            vkGetPhysicalDeviceQueueFamilyProperties(_physical_device, &queue_family_count, queue_family_properties.data());
-
-            int i = 0;
-            for (const auto& queue_family_property : queue_family_properties)
-            {
-                VkBool32 present_support = false;
-                vkGetPhysicalDeviceSurfaceSupportKHR(_physical_device, i, surface, &present_support);
-                if (queue_family_property.queueCount > 0)
-                {
-                    indices.present_family = i;
-                }
-
-                if (queue_family_property.queueCount > 0 && queue_family_property.queueFlags & VK_QUEUE_GRAPHICS_BIT)
-                {
-                    indices.graphics_family = i;
-                }
-
-                if (queue_family_property.queueCount > 0 && queue_family_property.queueFlags & VK_QUEUE_TRANSFER_BIT)
-                {
-                    indices.copy_family = i;
-                }
-
-                if (indices.IsComplete())
-                    break;
-
-                i++;
-            }
-
-            return indices;
-        }
-
-        inline bool check_extension_support(RHI_Device* rhi_device, const VkPhysicalDevice device)
-        {
-            uint32_t extensionCount;
-            vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
-
-            std::vector<VkExtensionProperties> available_extensions(extensionCount);
-            vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, available_extensions.data());
-
-            std::set<std::string> required_extensions(rhi_device->GetContextRhi()->extensions_device.begin(), rhi_device->GetContextRhi()->extensions_device.end());
-            for (const auto& extension : available_extensions)
-            {
-                required_extensions.erase(extension.extensionName);
-            }
-
-            return required_extensions.empty();
-        }
-
-        inline bool choose_physical_device(RHI_Device* rhi_device, void* window_handle, const std::vector<VkPhysicalDevice>& physical_devices)
-        {
-            // Temporarily create a surface just to check compatibility
-            VkSurfaceKHR surface_temp = nullptr;
-            {
-                VkWin32SurfaceCreateInfoKHR create_info = {};
-                create_info.sType                       = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-                create_info.hwnd                        = static_cast<HWND>(window_handle);
-                create_info.hinstance                   = GetModuleHandle(nullptr);
-
-                auto result = vkCreateWin32SurfaceKHR(rhi_device->GetContextRhi()->instance, &create_info, nullptr, &surface_temp);
-                if (result != VK_SUCCESS)
-                {
-                    LOGF_ERROR("Failed to create Win32 surface, %s.", Vulkan_Common::to_string(result));
-                    return false;
-                }
-            }
-
-            for (const auto& device : physical_devices)
-            {
-                bool extensions_supported = check_extension_support(rhi_device, device);
-                auto _indices = get_family_indices(rhi_device, surface_temp, device);
-
-                bool is_suitable = _indices.IsComplete() && extensions_supported;
-                if (is_suitable)
-                {
-                    rhi_device->GetContextRhi()->device_physical   = device;
-                    rhi_device->GetContextRhi()->indices           = _indices;
-                    return true;
-                }
-            }
-
-            // Destroy the surface
-            vkDestroySurfaceKHR(rhi_device->GetContextRhi()->instance, surface_temp, nullptr);
-
-            return false;
-        }
-
-        inline void log_available_extensions()
-        {
-            uint32_t extension_count = 0;
-            vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr);
-            std::vector<VkExtensionProperties> extensions(extension_count);
-            vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, extensions.data());
-            for (const auto& extension : extensions)
-            {
-                LOGF_INFO("%s", extension.extensionName);
-            }
-        }
-
-        inline bool has_validation_layer_support(RHI_Device* rhi_device)
-        {
-            uint32_t layer_count;
-            vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
-
-            std::vector<VkLayerProperties> available_layers(layer_count);
-            vkEnumerateInstanceLayerProperties(&layer_count, available_layers.data());
-
-            for (auto layer_name : rhi_device->GetContextRhi()->validation_layers)
-            {
-                for (const auto& layer_properties : available_layers)
-                {
-                    if (strcmp(layer_name, layer_properties.layerName) == 0)
-                        return true;
-                }
-            }
-
-            return false;
-        }
-    }
-
 	RHI_Device::RHI_Device(Context* context)
 	{
         m_context       = context;
@@ -219,21 +55,34 @@ namespace Spartan
 			app_info.pEngineName		= engine_version;
 			app_info.engineVersion		= VK_MAKE_VERSION(1, 0, 0);
 			app_info.applicationVersion	= VK_MAKE_VERSION(1, 0, 0);
-			app_info.apiVersion			= VK_API_VERSION_1_1;
+			app_info.apiVersion			= VK_API_VERSION_1_2;
+
+            // Get the supported extensions out of the requested extensions
+            vector<const char*> extensions_supported = vulkan_common::extension::get_supported_instance(m_rhi_context->extensions_instance);
 
 			VkInstanceCreateInfo create_info	= {};
 			create_info.sType					= VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 			create_info.pApplicationInfo		= &app_info;
-			create_info.enabledExtensionCount	= static_cast<uint32_t>(m_rhi_context->extensions_instance.size());
-			create_info.ppEnabledExtensionNames	= m_rhi_context->extensions_instance.data();
+			create_info.enabledExtensionCount	= static_cast<uint32_t>(extensions_supported.size());
+			create_info.ppEnabledExtensionNames	= extensions_supported.data();
 			create_info.enabledLayerCount		= 0;
 
-			if (m_rhi_context->validation_enabled)
+			if (m_rhi_context->debug)
 			{
-				if (_Vulkan_Device::has_validation_layer_support(this))
+                // Enable validation layer
+				if (vulkan_common::layer::is_present(m_rhi_context->validation_layers.front()))
 				{
-					create_info.enabledLayerCount	= static_cast<uint32_t>(m_rhi_context->validation_layers.size());
-					create_info.ppEnabledLayerNames = m_rhi_context->validation_layers.data();
+                    // Validation features
+                    VkValidationFeatureEnableEXT enabled_validation_features[]  = { VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT };
+                    VkValidationFeaturesEXT validation_features                 = {};
+                    validation_features.sType                                   = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT;
+                    validation_features.enabledValidationFeatureCount           = 1;
+                    validation_features.pEnabledValidationFeatures              = enabled_validation_features;
+
+                    // Validation layers
+                    create_info.enabledLayerCount   = static_cast<uint32_t>(m_rhi_context->validation_layers.size());
+                    create_info.ppEnabledLayerNames = m_rhi_context->validation_layers.data();
+                    create_info.pNext               = &validation_features;
 				}
 				else
 				{
@@ -241,63 +90,40 @@ namespace Spartan
 				}
 			}
 
-			auto result = vkCreateInstance(&create_info, nullptr, &m_rhi_context->instance);
-			if (result != VK_SUCCESS)
-			{
-				LOGF_ERROR("Failed to create instance, %s.", Vulkan_Common::to_string(result));
-				return;
-			}
+			if (!vulkan_common::error::check(vkCreateInstance(&create_info, nullptr, &m_rhi_context->instance)))
+                return;
 		}
 
-		_Vulkan_Device::log_available_extensions();
+        // Get function pointers (from extensions)
+        vulkan_common::functions::initialize(this);
 
-		// Debug callback
-		if (m_rhi_context->validation_enabled)
+		// Debug
+		if (m_rhi_context->debug)
 		{
-			VkDebugUtilsMessengerCreateInfoEXT create_info	= {};
-			create_info.sType								= VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-			create_info.messageSeverity						= VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-			create_info.messageType							= VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-			create_info.pfnUserCallback						= _Vulkan_Device::debug_callback;
-
-			if (_Vulkan_Device::debug_create(this, &create_info) != VK_SUCCESS)
-			{
-				LOG_ERROR("Failed to setup debug callback");
-			}
+            vulkan_common::debug::initialize(m_rhi_context->instance);
 		}
 
-		// Device Physical
-		{
-			uint32_t device_count = 0;
-			vkEnumeratePhysicalDevices(m_rhi_context->instance, &device_count, nullptr);
-			if (device_count == 0) 
-			{
-				LOG_ERROR("Failed to enumerate physical devices.");
-				return;
-			}
-			std::vector<VkPhysicalDevice> physical_devices(device_count);
-			vkEnumeratePhysicalDevices(m_rhi_context->instance, &device_count, physical_devices.data());
-			
-			if (!_Vulkan_Device::choose_physical_device(this, context->m_engine->GetWindowHandle(), physical_devices))
-			{
-				LOG_ERROR("Failed to find a suitable device.");
-				return;
-			}
-		}
+		// Find a physical device
+        if (!vulkan_common::device::choose_physical_device(this, context->m_engine->GetWindowData().handle))
+        {
+            LOG_ERROR("Failed to find a suitable physical device.");
+            return;
+        }
 
 		// Device
 		{
-			// Queue info
+			// Queue create info
 			vector<VkDeviceQueueCreateInfo> queue_create_infos;
 			{
-				set<uint32_t> unique_queue_families =
+				vector<uint32_t> unique_queue_families =
 				{
-					m_rhi_context->indices.graphics_family.value(),
-					m_rhi_context->indices.present_family.value(),
-					m_rhi_context->indices.copy_family.value()
+					m_rhi_context->queue_graphics_index,
+					m_rhi_context->queue_transfer_index,
+					m_rhi_context->queue_compute_index
 				};
-				auto queue_priority = 1.0f;
-				for (auto queue_family : unique_queue_families)
+
+				float queue_priority = 1.0f;
+				for (const uint32_t& queue_family : unique_queue_families)
 				{
 					VkDeviceQueueCreateInfo queue_create_info	= {};
 					queue_create_info.sType						= VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -308,19 +134,66 @@ namespace Spartan
 				}
 			}
 
-			// Describe
-			VkPhysicalDeviceFeatures device_features	= {};
-			device_features.samplerAnisotropy			= m_context->GetSubsystem<Renderer>()->GetAnisotropy() != 0;
+            // Get device properties
+            vkGetPhysicalDeviceProperties(static_cast<VkPhysicalDevice>(m_rhi_context->device_physical), &m_rhi_context->device_properties);
 
-			VkDeviceCreateInfo create_info	= {};
+            // Resource limits
+            m_rhi_context->max_texture_dimension_2d = m_rhi_context->device_properties.limits.maxImageDimension2D;
+
+            // Disable profiler if timestamps are not supported
+            if (m_rhi_context->profiler && !m_rhi_context->device_properties.limits.timestampComputeAndGraphics)
+            {
+                LOG_WARNING("Device doesn't support timestamps, disabling profiler...");
+                m_rhi_context->profiler = false;
+            }
+
+			// Get device features
+            VkPhysicalDeviceFeatures device_features_enabled = {};
+            {
+                m_rhi_context->device_features = {};
+                vkGetPhysicalDeviceFeatures(m_rhi_context->device_physical, &m_rhi_context->device_features);
+
+                #define ENABLE_FEATURE(feature)                                                                    \
+                if (m_rhi_context->device_features.feature)                                                        \
+                {                                                                                                  \
+                        device_features_enabled.feature = VK_TRUE;                                                 \
+                }                                                                                                  \
+                else                                                                                               \
+                {                                                                                                  \
+                    LOG_WARNING("Requested device feature " #feature " is not supported by the physical device");  \
+                    device_features_enabled.feature = VK_FALSE;                                                    \
+                }
+
+                ENABLE_FEATURE(samplerAnisotropy)
+                ENABLE_FEATURE(fillModeNonSolid)
+                ENABLE_FEATURE(wideLines)
+            }
+
+            // Determine enabled graphics shader stages
+            m_enabled_graphics_shader_stages = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            if (device_features_enabled.geometryShader)
+            {
+                m_enabled_graphics_shader_stages = VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT;
+            }
+            if (device_features_enabled.tessellationShader)
+            {
+                m_enabled_graphics_shader_stages = VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT | VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT;
+            }
+
+            // Get the supported extensions out of the requested extensions
+            vector<const char*> extensions_supported = vulkan_common::extension::get_supported_device(m_rhi_context->extensions_device, m_rhi_context->device_physical);
+
+            // Device create info
+			VkDeviceCreateInfo create_info = {};
 			{
 				create_info.sType					= VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 				create_info.queueCreateInfoCount	= static_cast<uint32_t>(queue_create_infos.size());
 				create_info.pQueueCreateInfos		= queue_create_infos.data();
-				create_info.pEnabledFeatures		= &device_features;
-				create_info.enabledExtensionCount	= static_cast<uint32_t>(m_rhi_context->extensions_device.size());
-				create_info.ppEnabledExtensionNames = m_rhi_context->extensions_device.data();
-				if (m_rhi_context->validation_enabled)
+				create_info.pEnabledFeatures		= &device_features_enabled;
+				create_info.enabledExtensionCount	= static_cast<uint32_t>(extensions_supported.size());
+				create_info.ppEnabledExtensionNames = extensions_supported.data();
+
+				if (m_rhi_context->debug)
 				{
 					create_info.enabledLayerCount	= static_cast<uint32_t>(m_rhi_context->validation_layers.size());
 					create_info.ppEnabledLayerNames = m_rhi_context->validation_layers.data();
@@ -332,83 +205,85 @@ namespace Spartan
 			}
 
 			// Create
-			auto result = vkCreateDevice(m_rhi_context->device_physical, &create_info, nullptr, &m_rhi_context->device);
-			if (result != VK_SUCCESS)
-			{
-				LOGF_ERROR("Failed to create device, %s.", Vulkan_Common::to_string(result));
+			if (!vulkan_common::error::check(vkCreateDevice(m_rhi_context->device_physical, &create_info, nullptr, &m_rhi_context->device)))
 				return;
-			}
-		}
 
-		// Queues
-		{
-			vkGetDeviceQueue(m_rhi_context->device, m_rhi_context->indices.graphics_family.value(), 0, &m_rhi_context->queue_graphics);
-			vkGetDeviceQueue(m_rhi_context->device, m_rhi_context->indices.present_family.value(), 0, &m_rhi_context->queue_present);
-			vkGetDeviceQueue(m_rhi_context->device, m_rhi_context->indices.copy_family.value(), 0, &m_rhi_context->queue_copy);
+            // Create queues
+            vkGetDeviceQueue(m_rhi_context->device, m_rhi_context->queue_graphics_index, 0, reinterpret_cast<VkQueue*>(&m_rhi_context->queue_graphics));
+            vkGetDeviceQueue(m_rhi_context->device, m_rhi_context->queue_compute_index,  0, reinterpret_cast<VkQueue*>(&m_rhi_context->queue_compute));
+            vkGetDeviceQueue(m_rhi_context->device, m_rhi_context->queue_transfer_index, 0, reinterpret_cast<VkQueue*>(&m_rhi_context->queue_transfer));
 		}
 
 		// Detect and log version
 		auto version_major	= to_string(VK_VERSION_MAJOR(app_info.apiVersion));
 		auto version_minor	= to_string(VK_VERSION_MINOR(app_info.apiVersion));
 		auto version_path	= to_string(VK_VERSION_PATCH(app_info.apiVersion));
-        auto& settings = m_context->GetSubsystem<Settings>();
-        settings->m_versionGraphicsAPI = version_major + "." + version_minor + "." + version_path;
-		LOG_INFO("Vulkan " + settings->m_versionGraphicsAPI);
+        auto settings       = m_context->GetSubsystem<Settings>();
+        string version = version_major + "." + version_minor + "." + version_path;
+        settings->RegisterThirdPartyLib("Vulkan", version_major + "." + version_minor + "." + version_path, "https://vulkan.lunarg.com/");
+		LOG_INFO("Vulkan %s", version.c_str());
 
 		m_initialized = true;
 	}
 
 	RHI_Device::~RHI_Device()
-	{	
-		// Wait for GPU
-		const auto result = vkQueueWaitIdle(m_rhi_context->queue_graphics);
+	{
+        if (!m_rhi_context || !m_rhi_context->queue_graphics)
+            return;
 
-		// Release resources
-		if (result == VK_SUCCESS)
+        // Release resources
+		if (Queue_Wait(RHI_Queue_Graphics))
 		{
-			_Vulkan_Device::debug_destroy(m_rhi_context.get());
+            if (m_rhi_context->debug)
+            {
+                vulkan_common::debug::shutdown(m_rhi_context->instance);
+            }
 			vkDestroyDevice(m_rhi_context->device, nullptr);
 			vkDestroyInstance(m_rhi_context->instance, nullptr);
 		}
-		else
-		{
-			LOGF_ERROR("Failed to wait idle, %s.", Vulkan_Common::to_string(result));
-		}
 	}
 
-	bool RHI_Device::ProfilingCreateQuery(void** query, const RHI_Query_Type type) const
-	{
-		return true;
-	}
+    bool RHI_Device::Queue_Present(void* swapchain_view, uint32_t* image_index) const
+    {
+        VkSemaphore wait_semaphores[]   = { nullptr };
+        VkSwapchainKHR swap_chains[]    = { static_cast<VkSwapchainKHR>(swapchain_view) };
 
-	bool RHI_Device::ProfilingQueryStart(void* query_object) const
-	{
-		return true;
-	}
+        VkPresentInfoKHR present_info   = {};
+        present_info.sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+        present_info.waitSemaphoreCount = 0;
+        present_info.pWaitSemaphores    = wait_semaphores;
+        present_info.swapchainCount     = 1;
+        present_info.pSwapchains        = swap_chains;
+        present_info.pImageIndices      = image_index;
 
-	bool RHI_Device::ProfilingGetTimeStamp(void* query_object) const
-	{
-		return true;
-	}
+        lock_guard<mutex> lock(m_queue_mutex);
+        return vulkan_common::error::check(vkQueuePresentKHR(static_cast<VkQueue>(m_rhi_context->queue_graphics), &present_info));
+    }
 
-	float RHI_Device::ProfilingGetDuration(void* query_disjoint, void* query_start, void* query_end) const
-	{
-		return 0.0f;
-	}
+    bool RHI_Device::Queue_Submit(const RHI_Queue_Type type, void* cmd_buffer, void* wait_semaphore /*= nullptr*/, void* wait_fence /*= nullptr*/, uint32_t wait_flags /*= 0*/) const
+    {
+        VkCommandBuffer _cmd_buffer         = static_cast<VkCommandBuffer>(cmd_buffer);
+        VkSemaphore wait_semaphores[]       = { static_cast<VkSemaphore>(wait_semaphore) };
+        VkPipelineStageFlags _wait_flags[]  = { wait_flags };
 
-	void RHI_Device::ProfilingReleaseQuery(void* query_object)
-	{
+        VkSubmitInfo submit_info            = {};
+        submit_info.sType                   = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit_info.waitSemaphoreCount      = wait_semaphore ? 1 : 0;
+        submit_info.pWaitSemaphores         = wait_semaphores;
+        submit_info.pWaitDstStageMask       = _wait_flags;
+        submit_info.commandBufferCount      = 1;
+        submit_info.pCommandBuffers         = reinterpret_cast<VkCommandBuffer*>(&_cmd_buffer);
+        submit_info.signalSemaphoreCount    = 0;
+        submit_info.pSignalSemaphores       = nullptr;
 
-	}
+        lock_guard<mutex> lock(m_queue_mutex);
+        return vulkan_common::error::check(vkQueueSubmit(static_cast<VkQueue>(Queue_Get(type)), 1, &submit_info, static_cast<VkFence>(wait_fence)));
+    }
 
-	uint32_t RHI_Device::ProfilingGetGpuMemory()
-	{
-		return 0;
-	}
-
-	uint32_t RHI_Device::ProfilingGetGpuMemoryUsage()
-	{
-		return 0;
-	}
+    bool RHI_Device::Queue_Wait(const RHI_Queue_Type type) const
+    {
+        lock_guard<mutex> lock(m_queue_mutex);
+        return vulkan_common::error::check(vkQueueWaitIdle(static_cast<VkQueue>(Queue_Get(type))));
+    }
 }
 #endif

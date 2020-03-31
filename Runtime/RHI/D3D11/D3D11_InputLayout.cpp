@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -38,7 +38,7 @@ namespace Spartan
 {
 	RHI_InputLayout::~RHI_InputLayout()
 	{
-		safe_release(reinterpret_cast<ID3D11InputLayout*>(m_resource));
+		safe_release(*reinterpret_cast<ID3D11InputLayout**>(&m_resource));
 	}
 
 	bool RHI_InputLayout::_CreateResource(void* vertex_shader_blob)
@@ -83,7 +83,7 @@ namespace Spartan
 
 		if (FAILED(result))
 		{
-			LOGF_ERROR("Failed to create input layout, %s", D3D11_Common::dxgi_error_to_string(result));
+			LOG_ERROR("Failed to create input layout, %s", d3d11_common::dxgi_error_to_string(result));
 			return false;
 		}
 

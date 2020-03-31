@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,8 +24,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 // Version
 constexpr auto engine_version = "v0.31 WIP";
 
-// APIs
-#define API_GRAPHICS_D3D11
+// APIs - Commented as they are expected to be predefined by the project generation scripts
+//#define API_GRAPHICS_D3D11
+//#define API_GRAPHICS_D3D12
 //#define API_GRAPHICS_VULKAN
 #define API_INPUT_WINDOWS
 
@@ -40,8 +41,12 @@ constexpr auto engine_version = "v0.31 WIP";
 #endif
 
 // Windows
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
-#define NOMINMAX 
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 
 //= DISABLED WARNINGS ==============================================================================================================================
 // identifier' : class 'type' needs to have dll-interface to be used by clients of class 'type2'
@@ -54,6 +59,7 @@ constexpr auto engine_version = "v0.31 WIP";
 
 //= INCLUDES ======
 #include <assert.h>
+#include <cstdint>
 //=================
 
 namespace Spartan
@@ -69,7 +75,7 @@ namespace Spartan
     }
 
 	template <typename T>
-	constexpr void safe_release(T* ptr)
+	constexpr void safe_release(T*& ptr)
 	{
 		if (ptr)
 		{

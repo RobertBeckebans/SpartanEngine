@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,12 +19,14 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES =========================
+//= INCLUDES ================================
 #include "RHI_Texture.h"
+#include "RHI_Device.h"
 #include "../IO/FileStream.h"
 #include "../Rendering/Renderer.h"
 #include "../Resource/ResourceCache.h"
-//====================================
+#include "../Resource/Import/ImageImporter.h"
+//===========================================
 
 //= NAMESPACES =====
 using namespace std;
@@ -48,7 +50,7 @@ namespace Spartan
 		// Check to see if the file already exists (if so, get the byte count)
 		uint32_t byte_count = 0;
 		{
-			if (FileSystem::FileExists(file_path))
+			if (FileSystem::Exists(file_path))
 			{
 				auto file = make_unique<FileStream>(file_path, FileStream_Read);
 				if (file->IsOpen())
@@ -97,25 +99,21 @@ namespace Spartan
 		file->Write(m_bpp);
 		file->Write(m_width);
 		file->Write(m_height);
+        file->Write(static_cast<uint32_t>(m_format));
 		file->Write(m_channels);
-		file->Write(m_is_grayscale);
-		file->Write(m_is_transparent);
+		file->Write(m_flags);
 		file->Write(GetId());
-		file->Write(GetResourceName());
 		file->Write(GetResourceFilePath());
 
 		return true;
 	}
 
-	bool RHI_Texture::LoadFromFile(const string& rawFilePath)
+	bool RHI_Texture::LoadFromFile(const string& path)
 	{
-		// Make the path relative to the engine
-		const auto file_path = FileSystem::GetRelativeFilePath(rawFilePath);
-
 		// Validate file path
-		if (!FileSystem::FileExists(file_path))
+		if (!FileSystem::IsFile(path))
 		{
-			LOGF_ERROR("Path \"%s\" is invalid.", file_path.c_str());
+			LOG_ERROR("\"%s\" is not a valid file path.", path.c_str());
 			return false;
 		}
 
@@ -125,37 +123,55 @@ namespace Spartan
 
 		// Load from disk
 		auto texture_data_loaded = false;		
-		if (FileSystem::IsEngineTextureFile(file_path)) // engine format (binary)
+		if (FileSystem::IsEngineTextureFile(path)) // engine format (binary)
 		{
-			texture_data_loaded = LoadFromFile_NativeFormat(file_path);
+			texture_data_loaded = LoadFromFile_NativeFormat(path);
 		}	
-		else if (FileSystem::IsSupportedImageFile(file_path)) // foreign format (most known image formats)
+		else if (FileSystem::IsSupportedImageFile(path)) // foreign format (most known image formats)
 		{
-			texture_data_loaded = LoadFromFile_ForeignFormat(file_path, m_generate_mipmaps_when_loading);
+			texture_data_loaded = LoadFromFile_ForeignFormat(path, m_flags & RHI_Texture_GenerateMipsWhenLoading);
 		}
 
+        // Ensure that we have the data
 		if (!texture_data_loaded)
 		{
-			LOGF_ERROR("Failed to load \"%s\".", file_path.c_str());
+			LOG_ERROR("Failed to load \"%s\".", path.c_str());
 			m_load_state = LoadState_Failed;
 			return false;
 		}
+
+        m_mip_levels = static_cast<uint32_t>(m_data.size());
 
 		// Create GPU resource
-		if (!CreateResourceGpu())
-		{
-			LOGF_ERROR("Failed to create shader resource for \"%s\".", GetResourceFilePath().c_str());
-			m_load_state = LoadState_Failed;
-			return false;
-		}
+        if (!m_context->GetSubsystem<Renderer>()->GetRhiDevice()->IsInitialized() || !CreateResourceGpu())
+        {
+            LOG_ERROR("Failed to create shader resource for \"%s\".", GetResourceFilePathNative().c_str());
+            m_load_state = LoadState_Failed;
+            return false;
+        }
 
 		// Only clear texture bytes if that's an engine texture, if not, it's not serialized yet.
-		if (FileSystem::IsEngineTextureFile(file_path)) 
+		if (FileSystem::IsEngineTextureFile(path))
 		{
 			m_data.clear();
 			m_data.shrink_to_fit();
 		}
 		m_load_state = LoadState_Completed;
+
+        // Compute memory usage
+        {
+            m_size_cpu = 0;
+            m_size_gpu = 0;
+            for (uint8_t mip_index = 0; mip_index < m_mip_levels; mip_index++)
+            {
+                const uint32_t mip_width  = m_width >> mip_index;
+                const uint32_t mip_height = m_height >> mip_index;
+
+                m_size_cpu += mip_index < m_data.size() ? m_data[mip_index].size() * sizeof(std::byte) : 0;
+                m_size_gpu += mip_width * mip_height * (m_bpp / 8);
+            }
+        }
+
 		return true;
 	}
 
@@ -170,16 +186,55 @@ namespace Spartan
 		return &m_data[index];
 	}
 
-	bool RHI_Texture::LoadFromFile_ForeignFormat(const string& file_path, const bool generate_mipmaps)
+    vector<std::byte> RHI_Texture::GetMipmap(const uint32_t index)
+    {
+        vector<std::byte> data;
+
+        // Use existing data, if it's there
+        if (index < m_data.size())
+        {
+            data = m_data[index];
+        }
+        // Else attempt to load the data
+        else
+        {
+            auto file = make_unique<FileStream>(GetResourceFilePathNative(), FileStream_Read);
+            if (file->IsOpen())
+            {
+                auto byte_count = file->ReadAs<uint32_t>();
+                const auto mip_count  = file->ReadAs<uint32_t>();
+
+                if (index < mip_count)
+                {
+                    for (uint32_t i = 0; i <= index; i++)
+                    {
+                        file->Read(&data);
+                    }
+                }
+                else
+                {
+                    LOG_ERROR("Invalid index");
+                }
+                file->Close();
+            }
+            else
+            {
+                LOG_ERROR("Unable to retreive data");
+            }
+        }
+
+        return data;
+    }
+
+    bool RHI_Texture::LoadFromFile_ForeignFormat(const string& file_path, const bool generate_mipmaps)
 	{
 		// Load texture
-		auto imageImp = m_context->GetSubsystem<ResourceCache>()->GetImageImporter();	
-		if (!imageImp->Load(file_path, this, generate_mipmaps))
+		ImageImporter* importer = m_context->GetSubsystem<ResourceCache>()->GetImageImporter();	
+		if (!importer->Load(file_path, this, generate_mipmaps))
 			return false;
 
-		// Change texture extension to an engine texture
-		SetResourceFilePath(FileSystem::GetFilePathWithoutExtension(file_path) + EXTENSION_TEXTURE);
-		SetResourceName(FileSystem::GetFileNameNoExtensionFromFilePath(GetResourceFilePath()));
+		// Set resource file path so it can be used by the resource cache
+		SetResourceFilePath(file_path);
 
 		return true;
 	}
@@ -194,11 +249,11 @@ namespace Spartan
 		m_data.shrink_to_fit();
 
 		// Read byte and mipmap count
-		auto byte_count		= file->ReadAs<uint32_t>();
-		auto mipmap_count	= file->ReadAs<uint32_t>();
+		auto byte_count = file->ReadAs<uint32_t>();
+        const auto mip_count  = file->ReadAs<uint32_t>();
 
 		// Read bytes
-		m_data.resize(mipmap_count);
+		m_data.resize(mip_count);
 		for (auto& mip : m_data)
 		{
 			file->Read(&mip);
@@ -208,11 +263,10 @@ namespace Spartan
 		file->Read(&m_bpp);
 		file->Read(&m_width);
 		file->Read(&m_height);
+        file->Read(reinterpret_cast<uint32_t*>(&m_format));
 		file->Read(&m_channels);
-		file->Read(&m_is_grayscale);
-		file->Read(&m_is_transparent);
+		file->Read(&m_flags);
 		SetId(file->ReadAs<uint32_t>());
-		SetResourceName(file->ReadAs<string>());
 		SetResourceFilePath(file->ReadAs<string>());
 
 		return true;
@@ -222,21 +276,21 @@ namespace Spartan
 	{
 		switch (format)
 		{
-			case Format_R8_UNORM:			return 1;
-			case Format_R16_UINT:			return 1;
-			case Format_R16_FLOAT:			return 1;
-			case Format_R32_UINT:			return 1;
-			case Format_R32_FLOAT:			return 1;
-			case Format_D32_FLOAT:			return 1;
-			case Format_R32_FLOAT_TYPELESS:	return 1;
-			case Format_R8G8_UNORM:			return 2;
-			case Format_R16G16_FLOAT:		return 2;
-			case Format_R32G32_FLOAT:		return 2;
-			case Format_R32G32B32_FLOAT:	return 3;
-			case Format_R8G8B8A8_UNORM:		return 4;
-			case Format_R16G16B16A16_FLOAT:	return 4;
-			case Format_R32G32B32A32_FLOAT:	return 4;
-			default:						return 0;
+			case RHI_Format_R8_Unorm:			    return 1;
+			case RHI_Format_R16_Uint:			    return 1;
+			case RHI_Format_R16_Float:			    return 1;
+			case RHI_Format_R32_Uint:			    return 1;
+			case RHI_Format_R32_Float:			    return 1;
+			case RHI_Format_R8G8_Unorm:			    return 2;
+			case RHI_Format_R16G16_Float:		    return 2;
+			case RHI_Format_R32G32_Float:		    return 2;
+			case RHI_Format_R32G32B32_Float:	    return 3;
+			case RHI_Format_R8G8B8A8_Unorm:		    return 4;
+			case RHI_Format_R16G16B16A16_Float:	    return 4;
+			case RHI_Format_R32G32B32A32_Float:	    return 4;
+            case RHI_Format_D32_Float:			    return 1;
+            case RHI_Format_D32_Float_S8X24_Uint:   return 2;
+			default:						        return 0;
 		}
 	}
 
@@ -251,5 +305,4 @@ namespace Spartan
 
 		return byte_count;
 	}
-
 }

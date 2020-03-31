@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -35,7 +35,7 @@ using namespace Spartan::Math;
 
 namespace Spartan
 {
-	Grid::Grid(shared_ptr<RHI_Device> rhiDevice)
+	Grid::Grid(shared_ptr<RHI_Device> rhi_device)
 	{
 		m_indexCount	= 0;
 		m_terrainHeight = 200;
@@ -44,7 +44,7 @@ namespace Spartan
 		vector<RHI_Vertex_PosCol> vertices;
 		vector<unsigned> indices;
 		BuildGrid(&vertices, &indices);
-		CreateBuffers(vertices, indices, rhiDevice);
+		CreateBuffers(vertices, indices, rhi_device);
 	}
 
 	const Matrix& Grid::ComputeWorldMatrix(Transform* camera)
@@ -77,8 +77,8 @@ namespace Spartan
 				// Become more transparent, the further out we go
 				const auto alphaWidth	= 1.0f - static_cast<float>(Abs(j)) / static_cast<float>(halfSizeH);
 				const auto alphaHeight	= 1.0f - static_cast<float>(Abs(i)) / static_cast<float>(halfSizeW);
-				auto alpha			= (alphaWidth + alphaHeight) * 0.5f;
-				alpha				= Pow(alpha, 10.0f);
+				auto alpha			    = (alphaWidth + alphaHeight) * 0.5f;
+				alpha				    = Pow(alpha, 10.0f);
 
 				// LINE 1
 				// Upper left.
@@ -138,7 +138,7 @@ namespace Spartan
 		m_vertexBuffer = make_shared<RHI_VertexBuffer>(rhi_device);
 		if (!m_vertexBuffer->Create(vertices))
 		{
-			LOG_ERROR("Grid::CreateBuffers: Failed to create vertex buffer.");
+			LOG_ERROR("Failed to create vertex buffer.");
 			return false;
 		}
 

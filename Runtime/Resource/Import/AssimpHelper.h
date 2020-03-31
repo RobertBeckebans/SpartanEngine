@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -31,7 +31,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "../../Math/Matrix.h"
 #include "../../World/Entity.h"
 #include "../../World/Components/Transform.h"
-#include "../../FileSystem/FileSystem.h"
+#include "../../Core/FileSystem.h"
 #include "../../Logging/Log.h"
 //===========================================
 
@@ -48,21 +48,21 @@ namespace Spartan::AssimpHelper
 		);
 	}
 
-	constexpr void set_entity_transform(aiNode* node, Entity* entity)
+	inline void set_entity_transform(const aiNode* node, Entity* entity)
 	{
 		if (!entity)
 			return;
 
 		// Convert to engine matrix
-		auto matrix_engine = ai_matrix4_x4_to_matrix(node->mTransformation);
+        const auto matrix_engine = ai_matrix4_x4_to_matrix(node->mTransformation);
 
 		// Apply position, rotation and scale
-		entity->GetTransform_PtrRaw()->SetPositionLocal(matrix_engine.GetTranslation());
-		entity->GetTransform_PtrRaw()->SetRotationLocal(matrix_engine.GetRotation());
-		entity->GetTransform_PtrRaw()->SetScaleLocal(matrix_engine.GetScale());
+		entity->GetTransform()->SetPositionLocal(matrix_engine.GetTranslation());
+		entity->GetTransform()->SetRotationLocal(matrix_engine.GetRotation());
+		entity->GetTransform()->SetScaleLocal(matrix_engine.GetScale());
 	}
 
-	constexpr void compute_node_count(aiNode* node, int* count)
+	constexpr void compute_node_count(const aiNode* node, int* count)
 	{
 		if (!node)
 			return;
@@ -107,27 +107,23 @@ namespace Spartan::AssimpHelper
 		void OnDebug(const char* message) override
 		{
 #ifdef DEBUG
-			Log::m_caller_name = "Spartan::ModelImporter";
-			Log::Write(message, Log_Info);
+			LOG_INFO(message, Log_Info);
 #endif
 		}
 
 		void OnInfo(const char* message) override
 		{
-			Log::m_caller_name = "Spartan::ModelImporter";
-			Log::Write(message, Log_Info);
+            LOG_INFO(message, Log_Info);
 		}
 
 		void OnWarn(const char* message) override
 		{
-			Log::m_caller_name = "Spartan::ModelImporter";
-			Log::Write(message, Log_Warning);
+            LOG_WARNING(message, Log_Warning);
 		}
 
 		void OnError(const char* message) override
 		{
-			Log::m_caller_name = "Spartan::ModelImporter";
-			Log::Write(message, Log_Error);
+			LOG_ERROR(message, Log_Error);
 		}
 	};
 
@@ -180,18 +176,17 @@ namespace Spartan::AssimpHelper
 		const auto file_path_no_ext = FileSystem::GetFilePathWithoutExtension(file_path);
 
 		// Check if the file exists using all engine supported extensions
-		auto supported_formats = FileSystem::GetSupportedImageFormats();
-		for (const auto& supported_format : supported_formats)
+		for (const auto& supported_format : supported_formats_image)
 		{
 			auto new_file_path			= file_path_no_ext + supported_format;
 			auto new_file_path_upper	= file_path_no_ext + FileSystem::ConvertToUppercase(supported_format);
 
-			if (FileSystem::FileExists(new_file_path))
+			if (FileSystem::Exists(new_file_path))
 			{
 				return new_file_path;
 			}
 
-			if (FileSystem::FileExists(new_file_path_upper))
+			if (FileSystem::Exists(new_file_path_upper))
 			{
 				return new_file_path_upper;
 			}
@@ -200,21 +195,23 @@ namespace Spartan::AssimpHelper
 		return file_path;
 	}
 
-	inline std::string texture_validate_path(const std::string& original_texture_path, const std::string& model_path)
+	inline std::string texture_validate_path(std::string original_texture_path, const std::string& model_path)
 	{
+        std::replace(original_texture_path.begin(), original_texture_path.end(), '\\', '/');
+
 		// Models usually return a texture path which is relative to the model's directory.
 		// However, to load anything, we'll need an absolute path, so we construct it here.
 		const auto model_dir	= FileSystem::GetDirectoryFromFilePath(model_path);
-		auto full_texture_path	= model_dir + original_texture_path;
+        auto full_texture_path = model_dir + original_texture_path;
 
 		// 1. Check if the texture path is valid
-		if (FileSystem::FileExists(full_texture_path))
+		if (FileSystem::Exists(full_texture_path))
 			return full_texture_path;
 
 		// 2. Check the same texture path as previously but 
 		// this time with different file extensions (jpg, png and so on).
 		full_texture_path = texture_try_multiple_extensions(full_texture_path);
-		if (FileSystem::FileExists(full_texture_path))
+		if (FileSystem::Exists(full_texture_path))
 			return full_texture_path;
 
 		// At this point we know the provided path is wrong, we will make a few guesses.
@@ -222,13 +219,13 @@ namespace Spartan::AssimpHelper
 
 		// 3. Check if the texture is in the same folder as the model
 		full_texture_path = model_dir + FileSystem::GetFileNameFromFilePath(full_texture_path);
-		if (FileSystem::FileExists(full_texture_path))
+		if (FileSystem::Exists(full_texture_path))
 			return full_texture_path;
 
 		// 4. Check the same texture path as previously but 
 		// this time with different file extensions (jpg, png and so on).
 		full_texture_path = texture_try_multiple_extensions(full_texture_path);
-		if (FileSystem::FileExists(full_texture_path))
+		if (FileSystem::Exists(full_texture_path))
 			return full_texture_path;
 
 		// Give up, no valid texture path was found

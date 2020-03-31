@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -45,7 +45,7 @@ namespace Spartan
 			out.open(path, ios_flags);
 			if (out.fail())
 			{
-				LOGF_ERROR("Failed to open \"%s\" for writing", path.c_str());
+				LOG_ERROR("Failed to open \"%s\" for writing", path.c_str());
 				return;
 			}
 		}
@@ -54,7 +54,7 @@ namespace Spartan
 			in.open(path, ios_flags);
 			if(in.fail())
 			{
-				LOGF_ERROR("Failed to open \"%s\" for reading", path.c_str());
+				LOG_ERROR("Failed to open \"%s\" for reading", path.c_str());
 				return;
 			}
 		}
@@ -177,7 +177,7 @@ namespace Spartan
 		vec->clear();
 		vec->shrink_to_fit();
 
-		auto length = ReadAs<uint32_t>();
+        const auto length = ReadAs<uint32_t>();
 
 		vec->reserve(length);
 		vec->resize(length);
@@ -193,7 +193,7 @@ namespace Spartan
 		vec->clear();
 		vec->shrink_to_fit();
 
-		auto length = ReadAs<uint32_t>();
+        const auto length = ReadAs<uint32_t>();
 
 		vec->reserve(length);
 		vec->resize(length);
@@ -209,7 +209,7 @@ namespace Spartan
 		vec->clear();
 		vec->shrink_to_fit();
 
-		auto length = ReadAs<uint32_t>();
+        const auto length = ReadAs<uint32_t>();
 
 		vec->reserve(length);
 		vec->resize(length);

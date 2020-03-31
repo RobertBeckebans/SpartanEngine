@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,15 +19,13 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ============================
+//= INCLUDES =====================
 #include "Transform.h"
 #include "../World.h"
 #include "../Entity.h"
 #include "../../Core/Context.h"
 #include "../../IO/FileStream.h"
-#include "../../FileSystem/FileSystem.h"
-#include "../../RHI/RHI_ConstantBuffer.h"
-//=======================================
+//================================
 
 //= NAMESPACES ================
 using namespace std;
@@ -66,7 +64,7 @@ namespace Spartan
 		stream->Write(m_rotationLocal);
 		stream->Write(m_scaleLocal);
 		stream->Write(m_lookAt);
-		stream->Write(m_parent ? m_parent->GetEntity_PtrRaw()->GetId() : 0);
+		stream->Write(m_parent ? m_parent->GetEntity()->GetId() : 0);
 	}
 
 	void Transform::Deserialize(FileStream* stream)
@@ -82,7 +80,7 @@ namespace Spartan
 		{
 			if (const auto parent = GetContext()->GetSubsystem<World>()->EntityGetById(parententity_id))
 			{
-				parent->GetTransform_PtrRaw()->AddChild(this);
+				parent->GetTransform()->AddChild(this);
 			}
 		}
 
@@ -309,14 +307,14 @@ namespace Spartan
 	{
 		if (!HasChildren())
 		{
-			LOG_WARNING(GetEntityName() + " has no children.");
+			LOG_WARNING("%s has no children.", GetEntityName().c_str());
 			return nullptr;
 		}
 
 		// prevent an out of vector bounds error
 		if (index >= GetChildrenCount())
 		{
-			LOG_WARNING("There is no child with an index of \"" + to_string(index) + "\".");
+			LOG_WARNING("There is no child with an index of \"%d\".", index);
 			return nullptr;
 		}
 
@@ -348,7 +346,7 @@ namespace Spartan
 				continue;
 
 			// get the possible child
-			auto possible_child = entity->GetTransform_PtrRaw();
+			auto possible_child = entity->GetTransform();
 
 			// if it doesn't have a parent, forget about it.
 			if (!possible_child->HasParent())
@@ -390,62 +388,7 @@ namespace Spartan
 		}
 	}
 
-	void Transform::UpdateConstantBuffer(const shared_ptr<RHI_Device>& rhi_device, const Matrix& view_projection)
-	{
-		// Has to match GBuffer.hlsl
-		if (!m_cb_gbuffer_gpu)
-		{
-			m_cb_gbuffer_gpu = make_shared<RHI_ConstantBuffer>(rhi_device);
-			m_cb_gbuffer_gpu->Create<CB_Gbuffer>();
-		}
-
-		const auto mvp_current = m_matrix * view_projection;
-	
-		// Determine if the buffer needs to update
-		auto update	= false;
-		update						= m_cb_gbuffer_cpu.model		!= m_matrix	? true : update;
-		const auto new_input		= m_cb_gbuffer_cpu.mvp_current	!= mvp_current;
-		const auto non_zero_delta	= m_cb_gbuffer_cpu.mvp_current	!= m_cb_gbuffer_cpu.mvp_previous;
-		update = new_input || non_zero_delta ? true : update;
-		if (!update)
-			return;
-
-		// Update buffer
-		auto buffer = static_cast<CB_Gbuffer*>(m_cb_gbuffer_gpu->Map());
-
-		buffer->model			= m_cb_gbuffer_cpu.model		= m_matrix;
-		buffer->mvp_current		= m_cb_gbuffer_cpu.mvp_current	= mvp_current;
-		buffer->mvp_previous	= m_cb_gbuffer_cpu.mvp_previous	= m_wvp_previous;
-
-		m_cb_gbuffer_gpu->Unmap();
-
-		m_wvp_previous = mvp_current;
-	}
-
-	void Transform::UpdateConstantBufferLight(const shared_ptr<RHI_Device>& rhi_device, const Matrix& view_projection, const uint32_t cascade_index)
-	{
-		// Has to match GBuffer.hlsl
-		if (cascade_index >=  static_cast<uint32_t>(m_light_cascades.size()))
-		{
-			LightCascade cb_light;
-			cb_light.buffer = make_shared<RHI_ConstantBuffer>(rhi_device);
-			cb_light.buffer->Create<Matrix>();
-			m_light_cascades.emplace_back(cb_light);
-		}
-		auto& cb_light = m_light_cascades[cascade_index];
-
-		// Determine if the buffer needs to update
-		auto mvp = m_matrix * view_projection;
-		if (cb_light.data == mvp)
-			return;
-
-		// Update buffer
-		auto& data = *static_cast<Matrix*>(cb_light.buffer->Map());
-		data = mvp;
-		cb_light.buffer->Unmap();
-	}
-
-	Matrix Transform::GetParentTransformMatrix() const
+    Matrix Transform::GetParentTransformMatrix() const
 	{
 		return HasParent() ? GetParent()->GetMatrix() : Matrix::Identity;
 	}

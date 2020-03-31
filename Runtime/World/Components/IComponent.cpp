@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,12 +19,13 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ===========================
+//= INCLUDES =====================
 #include "IComponent.h"
 #include "Light.h"
 #include "Environment.h"
 #include "Script.h"
 #include "RigidBody.h"
+#include "SoftBody.h"
 #include "Collider.h"
 #include "Constraint.h"
 #include "Camera.h"
@@ -32,9 +33,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "AudioListener.h"
 #include "Renderable.h"
 #include "Transform.h"
+#include "Terrain.h"
 #include "../Entity.h"
-#include "../../FileSystem/FileSystem.h"
-//======================================
+#include "../../Core/FileSystem.h"
+//================================
 
 //= NAMESPACES =====
 using namespace std;
@@ -46,14 +48,9 @@ namespace Spartan
     {
         m_context   = context;
         m_entity    = entity;
-        m_transform = transform ? transform : entity->GetTransform_PtrRaw();
+        m_transform = transform ? transform : entity->GetTransform();
         m_enabled   = true;
     }
-
-    shared_ptr<Entity> IComponent::GetEntity_PtrShared() const
-	{
-		return m_entity->GetPtrShared();
-	}
 
 	string IComponent::GetEntityName() const
 	{
@@ -81,7 +78,9 @@ namespace Spartan
 	REGISTER_COMPONENT(Light,			ComponentType_Light)
 	REGISTER_COMPONENT(Renderable,		ComponentType_Renderable)
 	REGISTER_COMPONENT(RigidBody,		ComponentType_RigidBody)
+    REGISTER_COMPONENT(SoftBody,        ComponentType_SoftBody)
 	REGISTER_COMPONENT(Script,			ComponentType_Script)
 	REGISTER_COMPONENT(Environment,		ComponentType_Environment)
+    REGISTER_COMPONENT(Terrain,         ComponentType_Terrain)
 	REGISTER_COMPONENT(Transform,		ComponentType_Transform)
 }

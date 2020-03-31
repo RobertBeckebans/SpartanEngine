@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,23 +19,21 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ==============================
+//= INCLUDES ================================
 #include "Model.h"
 #include "Mesh.h"
-#include "Animation.h"
 #include "Renderer.h"
-#include "Material.h"
 #include "../IO/FileStream.h"
 #include "../Core/Stopwatch.h"
 #include "../Resource/ResourceCache.h"
+#include "../Resource/Import/ModelImporter.h"
 #include "../World/Entity.h"
 #include "../World/Components/Transform.h"
 #include "../World/Components/Renderable.h"
-#include "../RHI/RHI_Implementation.h"
 #include "../RHI/RHI_VertexBuffer.h"
 #include "../RHI/RHI_IndexBuffer.h"
 #include "../RHI/RHI_Texture2D.h"
-//=========================================
+//===========================================
 
 //= NAMESPACES ================
 using namespace std;
@@ -46,51 +44,86 @@ namespace Spartan
 {
 	Model::Model(Context* context) : IResource(context, Resource_Model)
 	{
-		m_normalized_scale	= 1.0f;
-		m_is_animated		= false;
-		m_resource_manager	= m_context->GetSubsystem<ResourceCache>().get();
+		m_resource_manager	= m_context->GetSubsystem<ResourceCache>();
 		m_rhi_device		= m_context->GetSubsystem<Renderer>()->GetRhiDevice();
 		m_mesh				= make_unique<Mesh>();
 	}
 
 	Model::~Model()
 	{
-		m_materials.clear();
-		m_materials.shrink_to_fit();
-
-		m_animations.clear();
-		m_animations.shrink_to_fit();
+        Clear();
 	}
 
-	//= RESOURCE ============================================
+    void Model::Clear()
+    {
+        m_root_entity.reset();
+        m_vertex_buffer.reset();
+        m_index_buffer.reset();
+        m_mesh->Geometry_Clear();
+        m_aabb.Undefine();
+        m_normalized_scale = 1.0f;
+        m_is_animated = false;
+    }
+
 	bool Model::LoadFromFile(const string& file_path)
 	{
 		Stopwatch timer;
-		auto model_file_path = file_path;
 
-		// Check if this is a directory instead of a model file path
-		if (FileSystem::IsDirectory(file_path))
-		{
-			// If it is, try to find a model file in it
-			auto model_file_paths = FileSystem::GetSupportedModelFilesInDirectory(file_path);
-			if (!model_file_paths.empty())
-			{
-				model_file_path = model_file_paths.front();
-			}
-			else // abort
-			{
-				LOGF_WARNING("Failed to load model. Unable to find supported file in \"%s\".", FileSystem::GetDirectoryFromFilePath(file_path).c_str());
-				return false;
-			}
-		}
+        if (file_path.empty() || FileSystem::IsDirectory(file_path))
+        {
+            LOG_WARNING("Invalid file path");
+            return false;
+        }
 
-		const auto engine_format = FileSystem::GetExtensionFromFilePath(model_file_path) == EXTENSION_MODEL;
-		const auto success = engine_format ? LoadFromEngineFormat(model_file_path) : LoadFromForeignFormat(model_file_path);
+        // Load engine format
+        if (FileSystem::GetExtensionFromFilePath(file_path) == EXTENSION_MODEL)
+        {
+            // Deserialize
+            auto file = make_unique<FileStream>(file_path, FileStream_Read);
+            if (!file->IsOpen())
+                return false;
 
-		m_size = GeometryComputeMemoryUsage();
-		LOGF_INFO("Loading \"%s\" took %d ms", FileSystem::GetFileNameFromFilePath(file_path).c_str(), static_cast<int>(timer.GetElapsedTimeMs()));
+            SetResourceFilePath(file->ReadAs<string>());
+            file->Read(&m_normalized_scale);
+            file->Read(&m_mesh->Indices_Get());
+            file->Read(&m_mesh->Vertices_Get());
 
-		return success;
+            UpdateGeometry();
+        }
+        // Load foreign format
+        else
+        {
+            SetResourceFilePath(file_path);
+
+            if (m_resource_manager->GetModelImporter()->Load(this, file_path))
+            {
+                // Set the normalized scale to the root entity's transform
+                m_normalized_scale = GeometryComputeNormalizedScale();
+                m_root_entity.lock()->GetComponent<Transform>()->SetScale(m_normalized_scale);
+                m_root_entity.lock()->GetComponent<Transform>()->UpdateTransform();
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        // Compute memory usage
+        {
+            // Cpu
+            m_size_cpu = !m_mesh ? 0 : m_mesh->Geometry_MemoryUsage();
+
+            // Gpu
+            if (m_vertex_buffer && m_index_buffer)
+            {
+                m_size_gpu = m_vertex_buffer->GetSizeGpu();
+                m_size_gpu += m_index_buffer->GetSizeGpu();
+            }
+        }
+
+		LOG_INFO("Loading \"%s\" took %d ms", FileSystem::GetFileNameFromFilePath(file_path).c_str(), static_cast<int>(timer.GetElapsedTimeMs()));
+
+		return true;
 	}
 
 	bool Model::SaveToFile(const string& file_path)
@@ -99,17 +132,17 @@ namespace Spartan
 		if (!file->IsOpen())
 			return false;
 
-		file->Write(GetResourceName());
 		file->Write(GetResourceFilePath());
 		file->Write(m_normalized_scale);
 		file->Write(m_mesh->Indices_Get());
-		file->Write(m_mesh->Vertices_Get());	
+		file->Write(m_mesh->Vertices_Get());
+
+        file->Close();
 
 		return true;
 	}
-	//=======================================================
 
-	void Model::GeometryAppend(std::vector<uint32_t>& indices, std::vector<RHI_Vertex_PosTexNorTan>& vertices, uint32_t* index_offset, uint32_t* vertex_offset) const
+	void Model::AppendGeometry(const vector<uint32_t>& indices, const vector<RHI_Vertex_PosTexNorTan>& vertices, uint32_t* index_offset, uint32_t* vertex_offset) const
 	{
 		if (indices.empty() || vertices.empty())
 		{
@@ -122,12 +155,12 @@ namespace Spartan
 		m_mesh->Vertices_Append(vertices, vertex_offset);
 	}
 
-	void Model::GeometryGet(const uint32_t index_offset, const uint32_t index_count, const uint32_t vertex_offset, const uint32_t vertex_count, vector<uint32_t>* indices, vector<RHI_Vertex_PosTexNorTan>* vertices) const
+	void Model::GetGeometry(const uint32_t index_offset, const uint32_t index_count, const uint32_t vertex_offset, const uint32_t vertex_count, vector<uint32_t>* indices, vector<RHI_Vertex_PosTexNorTan>* vertices) const
 	{
 		m_mesh->Geometry_Get(index_offset, index_count, vertex_offset, vertex_count, indices, vertices);
 	}
 
-	void Model::GeometryUpdate()
+	void Model::UpdateGeometry()
 	{
 		if (m_mesh->Indices_Count() == 0 || m_mesh->Vertices_Count() == 0)
 		{
@@ -140,140 +173,47 @@ namespace Spartan
 		m_aabb				= BoundingBox(m_mesh->Vertices_Get());
 	}
 
-	void Model::AddMaterial(shared_ptr<Material>& material, const shared_ptr<Entity>& entity)
-	{
-		if (!material)
+	void Model::AddMaterial(shared_ptr<Material>& material, const shared_ptr<Entity>& entity) const
+    {
+		if (!material || !entity)
 		{
 			LOG_ERROR_INVALID_PARAMETER();
 			return;
 		}
 
 		// Create a file path for this material
-		material->SetResourceFilePath(m_model_directory_materials + material->GetResourceName() + EXTENSION_MATERIAL);
-
-		// Save the material in the model directory		
-		material->SaveToFile(material->GetResourceFilePath());
-
-		// Keep a reference to it
-		m_resource_manager->Cache(material);
-		m_materials.emplace_back(material);
+        const string spartan_asset_path = FileSystem::GetDirectoryFromFilePath(GetResourceFilePathNative()) + material->GetResourceName() + EXTENSION_MATERIAL;
+		material->SetResourceFilePath(spartan_asset_path);
 
 		// Create a Renderable and pass the material to it
-		if (entity)
-		{
-			auto renderable = entity->AddComponent<Renderable>();
-			renderable->MaterialSet(material);
-		}
-	}
-
-	void Model::AddAnimation(shared_ptr<Animation>& animation)
-	{
-		if (!animation)
-		{
-			LOG_ERROR_INVALID_PARAMETER();
-			return;
-		}
-
-		m_context->GetSubsystem<ResourceCache>()->Cache<Animation>(animation);
-		m_animations.emplace_back(animation);
-		m_is_animated = true;
+        entity->AddComponent<Renderable>()->SetMaterial(material);
 	}
 
 	void Model::AddTexture(shared_ptr<Material>& material, const TextureType texture_type, const string& file_path)
 	{
-		if (!material)
+		if (!material || file_path.empty())
 		{
 			LOG_ERROR_INVALID_PARAMETER();
-			return;
-		}
-
-		// Validate texture file path
-		if (file_path.empty())
-		{
-			LOG_WARNING("Provided texture file path hasn't been provided. Can't execute function");
 			return;
 		}
 
 		// Try to get the texture
 		const auto tex_name = FileSystem::GetFileNameNoExtensionFromFilePath(file_path);
-		auto texture = m_context->GetSubsystem<ResourceCache>()->GetByName<RHI_Texture2D>(tex_name);
-		if (texture)
+		if (auto texture = m_context->GetSubsystem<ResourceCache>()->GetByName<RHI_Texture2D>(tex_name))
 		{
 			material->SetTextureSlot(texture_type, texture);
 		}
 		// If we didn't get a texture, it's not cached, hence we have to load it and cache it now
-		else if (!texture)
+		else
 		{
 			// Load texture
 			auto generate_mipmaps = true;
-			texture = make_shared<RHI_Texture2D>(m_context, generate_mipmaps);
+            texture = make_shared<RHI_Texture2D>(m_context, generate_mipmaps);
 			texture->LoadFromFile(file_path);
 
-			// Update the texture with Model directory relative file path. Then save it to this directory
-			const auto model_relative_tex_path = m_model_directory_textures + tex_name + EXTENSION_TEXTURE;
-			texture->SetResourceFilePath(model_relative_tex_path);
-			texture->SetResourceName(FileSystem::GetFileNameNoExtensionFromFilePath(model_relative_tex_path));
-			texture->SaveToFile(model_relative_tex_path);		
-
 			// Set the texture to the provided material
-			m_resource_manager->Cache(texture);
 			material->SetTextureSlot(texture_type, texture);
 		}
-	}
-
-	void Model::SetWorkingDirectory(const string& directory)
-	{
-		// Set directories based on new directory
-		m_model_directory_model		= directory;
-		m_model_directory_materials	= m_model_directory_model + "Materials//";
-		m_model_directory_textures	= m_model_directory_model + "Textures//";
-
-		// Create directories
-		FileSystem::CreateDirectory_(directory);
-		FileSystem::CreateDirectory_(m_model_directory_materials);
-		FileSystem::CreateDirectory_(m_model_directory_textures);
-	}
-
-	bool Model::LoadFromEngineFormat(const string& file_path)
-	{
-		// Deserialize
-		auto file = make_unique<FileStream>(file_path, FileStream_Read);
-		if (!file->IsOpen())
-			return false;
-
-		SetResourceName(file->ReadAs<string>());
-		SetResourceFilePath(file->ReadAs<string>());
-		file->Read(&m_normalized_scale);
-		file->Read(&m_mesh->Indices_Get());
-		file->Read(&m_mesh->Vertices_Get());
-
-		GeometryUpdate();
-
-		return true;
-	}
-
-	bool Model::LoadFromForeignFormat(const string& file_path)
-	{
-		// Set some crucial data (Required by ModelImporter)
-		SetWorkingDirectory(m_context->GetSubsystem<ResourceCache>()->GetProjectDirectory() + FileSystem::GetFileNameNoExtensionFromFilePath(file_path) + "//"); // Assets/Sponza/
-		SetResourceFilePath(m_model_directory_model + FileSystem::GetFileNameNoExtensionFromFilePath(file_path) + EXTENSION_MODEL); // Assets/Sponza/Sponza.model
-		SetResourceName(FileSystem::GetFileNameNoExtensionFromFilePath(file_path)); // Sponza
-
-		// Load the model
-		if (m_resource_manager->GetModelImporter()->Load(this, file_path))
-		{
-			// Set the normalized scale to the root entity's transform
-			m_normalized_scale = GeometryComputeNormalizedScale();
-			m_root_entity.lock()->GetComponent<Transform>()->SetScale(m_normalized_scale);
-			m_root_entity.lock()->GetComponent<Transform>()->UpdateTransform();
-
-			// Save the model in our custom format.
-			SaveToFile(GetResourceFilePath());
-
-			return true;
-		}
-
-		return false;
 	}
 
 	bool Model::GeometryCreateBuffers()
@@ -289,13 +229,13 @@ namespace Spartan
 			m_index_buffer = make_shared<RHI_IndexBuffer>(m_rhi_device);
 			if (!m_index_buffer->Create(indices))
 			{
-				LOGF_ERROR("Failed to create index buffer for \"%s\".", GetResourceName().c_str());
+				LOG_ERROR("Failed to create index buffer for \"%s\".", GetResourceName().c_str());
 				success = false;
 			}
 		}
 		else
 		{
-			LOGF_ERROR("Failed to create index buffer for \"%s\". Provided indices are empty", GetResourceName().c_str());
+			LOG_ERROR("Failed to create index buffer for \"%s\". Provided indices are empty", GetResourceName().c_str());
 			success = false;
 		}
 
@@ -304,13 +244,13 @@ namespace Spartan
 			m_vertex_buffer = make_shared<RHI_VertexBuffer>(m_rhi_device);
 			if (!m_vertex_buffer->Create(vertices))
 			{
-				LOGF_ERROR("Failed to create vertex buffer for \"%s\".", GetResourceName().c_str());
+				LOG_ERROR("Failed to create vertex buffer for \"%s\".", GetResourceName().c_str());
 				success = false;
 			}
 		}
 		else
 		{
-			LOGF_ERROR("Failed to create vertex buffer for \"%s\". Provided vertices are empty", GetResourceName().c_str());
+			LOG_ERROR("Failed to create vertex buffer for \"%s\". Provided vertices are empty", GetResourceName().c_str());
 			success = false;
 		}
 
@@ -324,17 +264,5 @@ namespace Spartan
 
 		// Return normalized scale
 		return 1.0f / scale_offset;
-	}
-
-	uint32_t Model::GeometryComputeMemoryUsage() const
-	{
-		// Vertices & Indices
-		auto size = !m_mesh ? 0 : m_mesh->Geometry_MemoryUsage();
-
-		// Buffers
-		size += static_cast<uint32_t>(m_vertex_buffer->GetSize());
-		size += static_cast<uint32_t>(m_index_buffer->GetSize());
-
-		return size;
 	}
 }

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -23,11 +23,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "Widget_ShaderEditor.h"
 #include "Rendering/Renderer.h"
 #include "Core/Context.h"
+#include "Core/FileSystem.h"
 #include "RHI/RHI_Shader.h"
 #include <fstream>
 #include <sstream>
 #include "../ImGui/Source/imgui_stdlib.h"
-#include "FileSystem/FileSystem.h"
 //=======================================
 
 //= NAMESPACES =========
@@ -42,7 +42,7 @@ Widget_ShaderEditor::Widget_ShaderEditor(Context* context) : Widget(context)
     m_is_visible	= false;
     m_size          = ImVec2(1366, 1000);
 
-    m_renderer = m_context->GetSubsystem<Renderer>().get();
+    m_renderer = m_context->GetSubsystem<Renderer>();
 }
 
 void Widget_ShaderEditor::Tick()

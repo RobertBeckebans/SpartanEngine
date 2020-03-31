@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -30,6 +30,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "../../Input/Input.h"
 #include "../../IO/FileStream.h"
 #include "../../Rendering/Renderer.h"
+#include "../../Math/MathHelper.h"
 //===================================
 
 //= NAMESPACES ===============
@@ -40,20 +41,21 @@ using namespace std;
 namespace Spartan
 {
 	Camera::Camera(Context* context, Entity* entity, uint32_t id /*= 0*/) : IComponent(context, entity, id)
-	{
-        m_input = m_context->GetSubsystem<Input>().get();
+	{   
+        m_renderer  = m_context->GetSubsystem<Renderer>();
+        m_input     = m_context->GetSubsystem<Input>();
 	}
 
 	void Camera::OnInitialize()
 	{
-		ComputeBaseView();
-		ComputeViewMatrix();
-		ComputeProjection();
+        m_view              = ComputeViewMatrix();
+        m_projection        = ComputeProjection(m_renderer->GetOption(Render_ReverseZ));
+        m_view_projection   = m_view * m_projection;
 	}
 
 	void Camera::OnTick(float delta_time)
 	{
-		const auto& current_viewport = m_context->GetSubsystem<Renderer>()->GetViewport();
+		const auto& current_viewport = m_renderer->GetViewport();
 		if (m_last_known_viewport != current_viewport)
 		{
 			m_last_known_viewport   = current_viewport;
@@ -73,11 +75,10 @@ namespace Spartan
 		if (!m_isDirty)
 			return;
 
-		ComputeBaseView();
-		ComputeViewMatrix();
-		ComputeProjection();
-
-		m_frustrum.Construct(GetViewMatrix(), GetProjectionMatrix(), m_context->GetSubsystem<Renderer>()->GetReverseZ() ? GetNearPlane() : GetFarPlane());
+        m_view              = ComputeViewMatrix();
+        m_projection        = ComputeProjection(m_renderer->GetOption(Render_ReverseZ));
+        m_view_projection   = m_view * m_projection;
+		m_frustrum          = Frustum(GetViewMatrix(), GetProjectionMatrix(), m_renderer->GetOption(Render_ReverseZ) ? GetNearPlane() : GetFarPlane());
 
 		m_isDirty = false;
 	}
@@ -99,12 +100,12 @@ namespace Spartan
 		stream->Read(&m_near_plane);
 		stream->Read(&m_far_plane);
 
-		ComputeBaseView();
-		ComputeViewMatrix();
-		ComputeProjection();
+        m_view              = ComputeViewMatrix();
+        m_projection        = ComputeProjection(m_renderer->GetOption(Render_ReverseZ));
+        m_view_projection   = m_view * m_projection;
 	}
 
-	void Camera::SetNearPlane(const float near_plane)
+    void Camera::SetNearPlane(const float near_plane)
 	{
 		m_near_plane = Max(0.01f, near_plane);
 		m_isDirty = true;
@@ -127,7 +128,7 @@ namespace Spartan
 		return RadiansToDegrees(m_fov_horizontal_rad);
 	}
 
-    float Camera::GetFovVerticalRad()
+    float Camera::GetFovVerticalRad() const
     {
         return 2.0f * atan(tan(m_fov_horizontal_rad / 2.0f) * (GetViewport().height / GetViewport().width));
     }
@@ -138,30 +139,30 @@ namespace Spartan
 		m_isDirty = true;
 	}
 
-    const Spartan::RHI_Viewport& Camera::GetViewport()
+    const RHI_Viewport& Camera::GetViewport() const
     {
-        return m_context->GetSubsystem<Renderer>()->GetViewport();
+        return m_renderer ? m_renderer->GetViewport() : RHI_Viewport::Undefined;
     }
 
-    bool Camera::IsInViewFrustrum(Renderable* renderable)
-	{
-		const auto box		= renderable->GetAabb();
-		const auto center	= box.GetCenter();
-		const auto extents	= box.GetExtents();
+    bool Camera::IsInViewFrustrum(Renderable* renderable) const
+    {
+		const BoundingBox& box  = renderable->GetAabb();
+		const Vector3 center	= box.GetCenter();
+		const Vector3 extents	= box.GetExtents();
 
-		return m_frustrum.CheckCube(center, extents) != Outside;
+		return m_frustrum.IsVisible(center, extents);
 	}
 
-	bool Camera::IsInViewFrustrum(const Vector3& center, const Vector3& extents)
-	{
-		return m_frustrum.CheckCube(center, extents) != Outside;
+	bool Camera::IsInViewFrustrum(const Vector3& center, const Vector3& extents) const
+    {
+		return m_frustrum.IsVisible(center, extents);
 	}
 
 	bool Camera::Pick(const Vector2& mouse_position, shared_ptr<Entity>& picked)
 	{
-		const auto& viewport				= m_context->GetSubsystem<Renderer>()->GetViewport();
-		const auto& offset					= m_context->GetSubsystem<Renderer>()->viewport_editor_offset;
-		const auto mouse_position_relative	= mouse_position - offset;
+		const RHI_Viewport& viewport			= m_renderer->GetViewport();
+		const Vector2& offset					= m_renderer->viewport_editor_offset;
+		const Vector2 mouse_position_relative	= mouse_position - offset;
 
 		// Ensure the ray is inside the viewport
 		const auto x_outside = (mouse_position.x < offset.x) || (mouse_position.x > offset.x + viewport.width);
@@ -170,13 +171,13 @@ namespace Spartan
 			return false;
 
 		// Trace ray
-		m_ray		= Ray(GetTransform()->GetPosition(), ScreenToWorldPoint(mouse_position_relative));
+		m_ray		= Ray(GetTransform()->GetPosition(), Unproject(mouse_position_relative));
 		auto hits	= m_ray.Trace(m_context);
 
         // Create a struct to hold hit related data
         struct scored_entity
         {
-            scored_entity(const shared_ptr<Entity>& entity, float distance_ray, float distance_obb)
+            scored_entity(const shared_ptr<Entity>& entity, const float distance_ray, const float distance_obb)
             {
                 this->entity = entity;
                 score = distance_ray * 0.1f + distance_obb * 0.9f;
@@ -196,13 +197,13 @@ namespace Spartan
 				continue;
 
             // Score this hit
-            auto& obb = hit.m_entity->GetComponent<Renderable>()->GetAabb();
-            float distance_obb = Vector3::DistanceSquared(hit.m_position, obb.GetCenter());
+            const BoundingBox& aabb = hit.m_entity->GetComponent<Renderable>()->GetAabb();
+            const float distance_abb      = Vector3::DistanceSquared(hit.m_position, aabb.GetCenter());
             m_scored.emplace_back
             (
                 hit.m_entity,
                 1.0f - hit.m_distance / m_ray.GetLength(),          // normalized ray distance score
-                1.0f - (distance_obb / obb.GetExtents().Length())   // normalized obb center distance score
+                1.0f - (distance_abb / aabb.GetExtents().Length())  // normalized aabb center distance score
             );
 		}
         m_scored.shrink_to_fit();
@@ -225,14 +226,15 @@ namespace Spartan
 		return true;
 	}
 
-	Vector2 Camera::WorldToScreenPoint(const Vector3& position_world) const
+	Vector2 Camera::Project(const Vector3& position_world) const
 	{
-		const auto& viewport = m_context->GetSubsystem<Renderer>()->GetViewport();
+		const auto& viewport = GetViewport();
+
+        // A non reverse-z projection matrix is need, if it we don't have it, we create it
+        const auto projection = m_renderer->GetOption(Render_ReverseZ) ? Matrix::CreatePerspectiveFieldOfViewLH(GetFovVerticalRad(), viewport.AspectRatio(), m_near_plane, m_far_plane) : m_projection;
 
 		// Convert world space position to clip space position
-		const auto vfov_rad			= 2.0f * atan(tan(m_fov_horizontal_rad / 2.0f) * (viewport.height / viewport.width));
-		const auto projection		= Matrix::CreatePerspectiveFieldOfViewLH(vfov_rad, viewport.AspectRatio(), m_near_plane, m_far_plane); // compute non reverse z projection
-		const auto position_clip	= position_world * m_mView * projection;
+		const auto position_clip = position_world * m_view * projection;
 
 		// Convert clip space position to screen space position
 		Vector2 position_screen;
@@ -242,9 +244,33 @@ namespace Spartan
 		return position_screen;
 	}
 
-	Vector3 Camera::ScreenToWorldPoint(const Vector2& position_screen) const
+    Rectangle Camera::Project(const BoundingBox& bounding_box) const
+    {
+        const Vector3& min = bounding_box.GetMin();
+        const Vector3& max = bounding_box.GetMax();
+
+        Vector3 corners[8];
+        corners[0] = min;
+        corners[1] = Vector3(max.x, min.y, min.z);
+        corners[2] = Vector3(min.x, max.y, min.z);
+        corners[3] = Vector3(max.x, max.y, min.z);
+        corners[4] = Vector3(min.x, min.y, max.z);
+        corners[5] = Vector3(max.x, min.y, max.z);
+        corners[6] = Vector3(min.x, max.y, max.z);
+        corners[7] = max;
+
+        Rectangle rectangle;
+        for (Vector3& corner : corners)
+        {
+            rectangle.Merge(Project(corner));
+        }
+
+        return rectangle;
+    }
+
+    Vector3 Camera::Unproject(const Vector2& position_screen) const
 	{
-		const auto& viewport = m_context->GetSubsystem<Renderer>()->GetViewport();
+		const auto& viewport = m_renderer->GetViewport();
 
 		// Convert screen space position to clip space position
 		Vector3 position_clip;
@@ -253,7 +279,7 @@ namespace Spartan
 		position_clip.z = 1.0f;
 
 		// Compute world space position
-		const auto view_projection_inverted	= (m_mView * m_mProjection).Inverted();
+		const auto view_projection_inverted	= m_view_projection.Inverted();
 		auto position_world					= position_clip * view_projection_inverted;
 
 		return position_world;
@@ -261,9 +287,9 @@ namespace Spartan
 
     void Camera::FpsControl(float delta_time)
     {
-        static const float mouse_sensitivity        = 0.2f;
-        static const float mouse_smoothing          = 2.5f;
-        static const float movement_speed_max       = 10.0f;
+        static const float mouse_sensitivity        = 0.13f;
+        static const float mouse_smoothing          = 0.2f;
+        static const float movement_speed_max       = 40.0f;
         static const float movement_acceleration    = 0.8f;
         static const float movement_drag            = 0.08f;
 
@@ -271,11 +297,19 @@ namespace Spartan
         {
             // Mouse look
             {
+                // Snap to initial camera rotation (if this is the first time running)
+                if (mouse_rotation == Vector2::Zero)
+                {
+                    const Quaternion rotation = m_transform->GetRotation();
+                    mouse_rotation.x    = rotation.Yaw();
+                    mouse_rotation.y    = rotation.Pitch();
+                }
+
                 // Get mouse delta
-                Vector2 mouse_delta = m_input->GetMouseDelta() * mouse_sensitivity;
+                const Vector2 mouse_delta = m_input->GetMouseDelta() * mouse_sensitivity;
 
                 // Lerp to it
-                mouse_smoothed = Math::Lerp(mouse_smoothed, mouse_delta, 1.0f / mouse_smoothing);
+                mouse_smoothed = Math::Lerp(mouse_smoothed, mouse_delta, Clamp(1.0f - mouse_smoothing, 0.0f, 1.0f));
 
                 // Accumulate rotation
                 mouse_rotation += mouse_smoothed;
@@ -284,8 +318,8 @@ namespace Spartan
                 mouse_rotation.y = Clamp(mouse_rotation.y, -90.0f, 90.0f);
 
                 // Compute rotation
-                auto xQuaternion = Quaternion::FromAngleAxis(mouse_rotation.x * DEG_TO_RAD, Vector3::Up);
-                auto yQuaternion = Quaternion::FromAngleAxis(mouse_rotation.y * DEG_TO_RAD, Vector3::Right);
+                const auto xQuaternion = Quaternion::FromAngleAxis(mouse_rotation.x * DEG_TO_RAD, Vector3::Up);
+                const auto yQuaternion = Quaternion::FromAngleAxis(mouse_rotation.y * DEG_TO_RAD, Vector3::Right);
 
                 // Rotate
                 m_transform->SetRotationLocal(xQuaternion * yQuaternion);
@@ -319,8 +353,8 @@ namespace Spartan
         }
     }
 
-	void Camera::ComputeViewMatrix()
-	{
+    Matrix Camera::ComputeViewMatrix() const
+    {
 		const auto position	= GetTransform()->GetPosition();
 		auto look_at		= GetTransform()->GetRotation() * Vector3::Forward;
 		const auto up		= GetTransform()->GetRotation() * Vector3::Up;
@@ -328,30 +362,24 @@ namespace Spartan
 		// offset look_at by current position
 		look_at += position;
 
-		// calculate view matrix
-		m_mView = Matrix::CreateLookAtLH(position, look_at, up);
+		// compute view matrix
+		return Matrix::CreateLookAtLH(position, look_at, up);
 	}
 
-	void Camera::ComputeBaseView()
+	Matrix Camera::ComputeProjection(const bool reverse_z)
 	{
-		const auto camera_pos	= Vector3(0, 0, -m_near_plane);
-		const auto look_at		= (Vector3::Forward * Matrix::Identity).Normalized();
-		m_mBaseView				= Matrix::CreateLookAtLH(camera_pos, look_at, Vector3::Up);
-	}
-
-	void Camera::ComputeProjection()
-	{
-        auto& renderer = m_context->GetSubsystem<Renderer>();
-		const auto near_plane	= renderer->GetReverseZ() ? m_far_plane : m_near_plane;
-		const auto far_plane	= renderer->GetReverseZ() ? m_near_plane : m_far_plane;
+        const float near_plane	= !reverse_z ? m_near_plane : m_far_plane;
+        const float far_plane     = !reverse_z ? m_far_plane  : m_near_plane;
 
 		if (m_projection_type == Projection_Perspective)
 		{
-			m_mProjection = Matrix::CreatePerspectiveFieldOfViewLH(GetFovVerticalRad(), GetViewport().AspectRatio(), near_plane, far_plane);
+			return Matrix::CreatePerspectiveFieldOfViewLH(GetFovVerticalRad(), GetViewport().AspectRatio(), near_plane, far_plane);
 		}
 		else if (m_projection_type == Projection_Orthographic)
 		{
-			m_mProjection = Matrix::CreateOrthographicLH(GetViewport().width, GetViewport().height, near_plane, far_plane);
+			return Matrix::CreateOrthographicLH(GetViewport().width, GetViewport().height, near_plane, far_plane);
 		}
+
+        return Matrix::Identity;
 	}
 }

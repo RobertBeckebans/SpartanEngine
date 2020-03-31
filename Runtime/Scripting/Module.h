@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -37,15 +37,15 @@ namespace Spartan
 	class Module
 	{
 	public:
-		Module(const std::string& moduleName, std::weak_ptr<Scripting> scriptEngine);
+		Module(const std::string& moduleName, Scripting* scriptEngine);
 		~Module();
 
 		bool LoadScript(const std::string& filePath);
-		asIScriptModule* GetAsIScriptModule();
+		asIScriptModule* GetAsIScriptModule() const;
 
 	private:
 		std::string m_moduleName;
 		std::unique_ptr<CScriptBuilder> m_scriptBuilder;
-		std::weak_ptr<Scripting> m_scriptEngine;
+        Scripting* m_scripting;
 	};
 }

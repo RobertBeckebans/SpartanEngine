@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -26,7 +26,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "Transform_Gizmo.h"
 #include "../Model.h"
 #include "../Renderer.h"
-#include "../Utilities/Geometry.h"
+#include "../../Utilities/Geometry.h"
 #include "../../Input/Input.h"
 #include "../../World/Entity.h"
 #include "../../World/Components/Camera.h"
@@ -91,8 +91,8 @@ namespace Spartan
 	{
 		m_type		= type;
 		m_context	= context;
-		m_renderer	= context->GetSubsystem<Renderer>().get();
-		m_input		= context->GetSubsystem<Input>().get();
+		m_renderer	= context->GetSubsystem<Renderer>();
+		m_input		= context->GetSubsystem<Input>();
 
         m_handle_x      = TransformHandleAxis(Vector3::Right, m_context);
         m_handle_y      = TransformHandleAxis(Vector3::Up, m_context);
@@ -119,8 +119,8 @@ namespace Spartan
 			Utility::Geometry::CreateCylinder(&vertices, &indices);
 		}
 		m_model = make_unique<Model>(m_context);
-		m_model->GeometryAppend(indices, vertices);
-		m_model->GeometryUpdate();
+		m_model->AppendGeometry(indices, vertices);
+		m_model->UpdateGeometry();
 
 		// Create bounding boxes for the handles, based on the vertices used
 		m_handle_x.box		= vertices;
@@ -129,7 +129,7 @@ namespace Spartan
 		m_handle_xyz.box	= m_handle_x.box;
 	}
 
-	bool TransformHandle::Update(const TransformHandle_Space space, const shared_ptr<Entity>& entity, Camera* camera, const float handle_size, const float handle_speed)
+	bool TransformHandle::Update(const TransformHandle_Space space, Entity* entity, Camera* camera, const float handle_size, const float handle_speed)
 	{
 		if (!entity || !camera)
 		{
@@ -149,13 +149,13 @@ namespace Spartan
 			const auto editor_offset		= m_context->GetSubsystem<Renderer>()->viewport_editor_offset;
 			const auto mouse_pos_relative	= mouse_pos - editor_offset;
 			const auto ray_start			= camera->GetTransform()->GetPosition();
-			auto ray_end					= camera->ScreenToWorldPoint(mouse_pos_relative);
-			auto ray						= Ray(ray_start, ray_end);
+			auto ray_end					= camera->Unproject(mouse_pos_relative);
+            const auto ray						= Ray(ray_start, ray_end);
 
 			// Test if ray intersects any of the handles
-			const auto hovered_x	= ray.HitDistance(m_handle_x.box_transformed) != INFINITY;
-			const auto hovered_y	= ray.HitDistance(m_handle_y.box_transformed) != INFINITY;
-			const auto hovered_z	= ray.HitDistance(m_handle_z.box_transformed) != INFINITY;
+			const auto hovered_x	= ray.HitDistance(m_handle_x.box_transformed)   != INFINITY;
+			const auto hovered_y	= ray.HitDistance(m_handle_y.box_transformed)   != INFINITY;
+			const auto hovered_z	= ray.HitDistance(m_handle_z.box_transformed)   != INFINITY;
 			const auto hovered_xyz	= ray.HitDistance(m_handle_xyz.box_transformed) != INFINITY;
 
 			// Mark a handle as hovered, only if it's the only hovered handle (during the previous frame
@@ -173,7 +173,7 @@ namespace Spartan
 			// Track delta
 			m_ray_previous			= m_ray_current != Vector3::Zero ? m_ray_current : ray_end; // avoid big delta in the first run
 			m_ray_current			= ray_end;
-			auto delta				= m_ray_current - m_ray_previous;
+            const auto delta				= m_ray_current - m_ray_previous;
             const auto delta_xyz    = delta.Length();
 
             // If the delta reached infinity, ignore the input as it will result in NaN position.
@@ -188,10 +188,10 @@ namespace Spartan
 			m_handle_xyz.delta	= m_handle_x.delta + m_handle_y.delta + m_handle_z.delta;
 
 			// Update input
-			m_handle_x.UpdateInput(m_type, entity->GetTransform_PtrRaw(), m_input);
-			m_handle_y.UpdateInput(m_type, entity->GetTransform_PtrRaw(), m_input);
-			m_handle_z.UpdateInput(m_type, entity->GetTransform_PtrRaw(), m_input);
-			m_handle_xyz.UpdateInput(m_type, entity->GetTransform_PtrRaw(), m_input);
+			m_handle_x.UpdateInput(m_type, entity->GetTransform(), m_input);
+			m_handle_y.UpdateInput(m_type, entity->GetTransform(), m_input);
+			m_handle_z.UpdateInput(m_type, entity->GetTransform(), m_input);
+			m_handle_xyz.UpdateInput(m_type, entity->GetTransform(), m_input);
 		}
 
 		return m_handle_x.isEditing || m_handle_y.isEditing || m_handle_z.isEditing || m_handle_xyz.isEditing;
@@ -233,20 +233,20 @@ namespace Spartan
 		return m_handle_xyz.GetColor();
 	}
 
-	shared_ptr<RHI_VertexBuffer> TransformHandle::GetVertexBuffer() const
+	const RHI_VertexBuffer* TransformHandle::GetVertexBuffer() const
 	{
 		return m_model->GetVertexBuffer();
 	}
 
-	shared_ptr<RHI_IndexBuffer> TransformHandle::GetIndexBuffer() const
+	const RHI_IndexBuffer* TransformHandle::GetIndexBuffer() const
 	{
 		return m_model->GetIndexBuffer();
 	}
 
-	void TransformHandle::SnapToTransform(const TransformHandle_Space space, const shared_ptr<Entity>& entity, Camera* camera, const float handle_size)
+	void TransformHandle::SnapToTransform(const TransformHandle_Space space, Entity* entity, Camera* camera, const float handle_size)
 	{
 		// Get entity's components
-		auto entity_transform	= entity->GetTransform_PtrRaw();		// Transform alone is not enough
+        const auto entity_transform	= entity->GetTransform();		// Transform alone is not enough
 		auto entity_renderable	= entity->GetComponent<Renderable>();	// Bounding box is also needed as some meshes are not defined around P(0,0,0)	
 
 		// Acquire entity's transformation data (local or world space)
@@ -267,7 +267,7 @@ namespace Spartan
 		m_handle_z.position		= aabb_center + forward * handle_distance;
 		m_handle_xyz.position	= aabb_center;
 		m_handle_x.rotation		= Quaternion::FromEulerAngles(0.0f, 0.0f, -90.0f);
-		m_handle_y.rotation		= Quaternion::FromLookRotation(up, up);
+		m_handle_y.rotation		= Quaternion::FromEulerAngles(0.0f, 90.0f, 0.0f);
 		m_handle_z.rotation		= Quaternion::FromEulerAngles(90.0f, 0.0f, 0.0f);	
 		m_handle_x.scale		= handle_scale;
 		m_handle_y.scale		= handle_scale;

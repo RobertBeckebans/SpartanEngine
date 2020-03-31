@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,7 +24,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <scriptstdstring/scriptstdstring.cpp>
 #include "ScriptInterface.h"
 #include "../Logging/Log.h"
-#include "../FileSystem/FileSystem.h"
+#include "../Core/FileSystem.h"
 #include "../Core/EventSystem.h"
 #include "../Core/Settings.h"
 #include "../Core/Context.h"
@@ -71,10 +71,10 @@ namespace Spartan
         m_scriptEngine->SetEngineProperty(asEP_BUILD_WITHOUT_LINE_CUES, true);
 
         // Get version
-        string major = to_string(ANGELSCRIPT_VERSION).erase(1, 4);
-        string minor = to_string(ANGELSCRIPT_VERSION).erase(0, 1).erase(2, 2);
-        string rev = to_string(ANGELSCRIPT_VERSION).erase(0, 3);
-        m_context->GetSubsystem<Settings>()->m_versionAngelScript = major + "." + minor + "." + rev;
+        const string major = to_string(ANGELSCRIPT_VERSION).erase(1, 4);
+        const string minor = to_string(ANGELSCRIPT_VERSION).erase(0, 1).erase(2, 2);
+        const string rev = to_string(ANGELSCRIPT_VERSION).erase(0, 3);
+        m_context->GetSubsystem<Settings>()->RegisterThirdPartyLib("AngelScript", major + "." + minor + "." + rev, "https://www.angelcode.com/angelscript/downloads.html");
 
         return true;
     }
@@ -90,8 +90,8 @@ namespace Spartan
 		m_contexts.shrink_to_fit();
 	}
 
-	asIScriptEngine* Scripting::GetAsIScriptEngine()
-	{
+	asIScriptEngine* Scripting::GetAsIScriptEngine() const
+    {
 		return m_scriptEngine;
 	}
 
@@ -142,7 +142,7 @@ namespace Spartan
 		ctx->SetObject(obj); // set the object pointer
         if (delta_time != -1.0f) ctx->SetArgFloat(0, delta_time);
 
-		int r = ctx->Execute(); // execute the call
+        const int r = ctx->Execute(); // execute the call
 
 		// output any exceptions
 		if (r == asEXECUTION_EXCEPTION)
@@ -159,8 +159,8 @@ namespace Spartan
 	/*------------------------------------------------------------------------------
 										[MODULE]
 	------------------------------------------------------------------------------*/
-	void Scripting::DiscardModule(string moduleName)
-	{
+	void Scripting::DiscardModule(const string& moduleName) const
+    {
 		m_scriptEngine->DiscardModule(moduleName.c_str());
 	}
 
@@ -168,32 +168,32 @@ namespace Spartan
 									[PRIVATE]
 	------------------------------------------------------------------------------*/
 	// This is used for script exception messages
-	void Scripting::LogExceptionInfo(asIScriptContext* ctx)
-	{
-		string exceptionDescription = ctx->GetExceptionString(); // get the exception that occurred
+	void Scripting::LogExceptionInfo(asIScriptContext* ctx) const
+    {
+        const string exceptionDescription = ctx->GetExceptionString(); // get the exception that occurred
 		const asIScriptFunction* function = ctx->GetExceptionFunction(); // get the function where the exception occurred
 
-		string functionDecleration = function->GetDeclaration();
+        const string functionDecleration = function->GetDeclaration();
 		string moduleName = function->GetModuleName();
-		string scriptPath = function->GetScriptSectionName();
-		string scriptFile = FileSystem::GetFileNameFromFilePath(scriptPath);
-		string exceptionLine = to_string(ctx->GetExceptionLineNumber());
+        const string scriptPath = function->GetScriptSectionName();
+        const string scriptFile = FileSystem::GetFileNameFromFilePath(scriptPath);
+        const string exceptionLine = to_string(ctx->GetExceptionLineNumber());
 
-		LOGF_ERROR("%s, at line %s, in function %s, in script %s", exceptionDescription.c_str(), exceptionLine.c_str(), functionDecleration.c_str(), scriptFile.c_str());
+		LOG_ERROR("%s, at line %s, in function %s, in script %s", exceptionDescription.c_str(), exceptionLine.c_str(), functionDecleration.c_str(), scriptFile.c_str());
 	}
 
 	// This is used for AngelScript error messages
-	void Scripting::message_callback(const asSMessageInfo& msg)
-	{
-		string filename = FileSystem::GetFileNameFromFilePath(msg.section);
-		string message = msg.message;
+	void Scripting::message_callback(const asSMessageInfo& msg) const
+    {
+        const string filename = FileSystem::GetFileNameFromFilePath(msg.section);
+        const string message = msg.message;
 
-		string finalMessage;
+		string final_message;
 		if (filename != "")
-			finalMessage = filename + " " + message;
+			final_message = filename + " " + message;
 		else
-			finalMessage = message;
+			final_message = message;
 
-		LOG_ERROR(finalMessage);
+		LOG_ERROR(final_message);
 	}
 }

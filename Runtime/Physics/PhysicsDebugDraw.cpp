@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -35,7 +35,7 @@ namespace Spartan
 	PhysicsDebugDraw::PhysicsDebugDraw(Renderer* renderer)
 	{
 		m_renderer	= renderer;
-		m_debugMode = DBG_DrawWireframe | DBG_DrawContactPoints | DBG_DrawConstraints | DBG_DrawConstraintLimits | DBG_DrawNormals | DBG_DrawFrames;
+		m_debugMode = DBG_DrawWireframe | DBG_DrawContactPoints | DBG_DrawConstraints | DBG_DrawConstraintLimits;
 	}
 
 	void PhysicsDebugDraw::drawLine(const btVector3& from, const btVector3& to, const btVector3& fromColor, const btVector3& toColor)
@@ -46,12 +46,12 @@ namespace Spartan
 	void PhysicsDebugDraw::drawContactPoint(const btVector3& PointOnB, const btVector3& normalOnB, btScalar distance, int lifeTime, const btVector3& color)
 	{
 		const btVector3& from = PointOnB;
-		btVector3 to = PointOnB + normalOnB * distance;
+        const btVector3 to = PointOnB + normalOnB * distance;
 		drawLine(from, to, color);
 	}
 
 	void PhysicsDebugDraw::reportErrorWarning(const char* error_warning)
 	{
-		LOGF_WARNING("%s", error_warning);
+		LOG_WARNING("%s", error_warning);
 	}
 }

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,15 +19,12 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES =======================
+//= INCLUDES ==================
 #include "Widget_Viewport.h"
-#include "Rendering/Renderer.h"
-#include "World/Entity.h"
-#include "World/Components/Camera.h"
-#include "Widget_World.h"
-#include "../ImGui_Extension.h"
 #include "Core/Timer.h"
-//==================================
+#include "Rendering\Model.h"
+#include "../ImGui_Extension.h"
+//=============================
 
 //= NAMESPACES =========
 using namespace std;
@@ -41,19 +38,19 @@ Widget_Viewport::Widget_Viewport(Context* context) : Widget(context)
     m_size      = Vector2(400, 250);
 	m_flags     |= ImGuiWindowFlags_NoScrollbar;
     m_padding   = Vector2(4.0f);
-    m_renderer  = m_context->GetSubsystem<Renderer>().get();
-    m_world     = m_context->GetSubsystem<World>().get();
+    m_renderer  = m_context->GetSubsystem<Renderer>();
+    m_world     = m_context->GetSubsystem<World>();
 }
 
 void Widget_Viewport::Tick()
 {
 	if (!m_renderer)
 		return;
-	
+
 	// Get current frame window resolution
-	auto width			= static_cast<unsigned int>(ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x);
-	auto height			= static_cast<unsigned int>(ImGui::GetWindowContentRegionMax().y - ImGui::GetWindowContentRegionMin().y);
-	const auto max_res	= m_renderer->GetMaxResolution();
+	uint32_t width			= static_cast<uint32_t>(ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x);
+	uint32_t height			= static_cast<uint32_t>(ImGui::GetWindowContentRegionMax().y - ImGui::GetWindowContentRegionMin().y);
+    const uint32_t max_res  = m_renderer->GetMaxResolution();
 	if (width > max_res || height > max_res)
 		return;
 
@@ -82,7 +79,7 @@ void Widget_Viewport::Tick()
 	// Draw the image after a potential Renderer::SetResolution() call has been made
 	ImGuiEx::Image
 	(
-        m_renderer->GetFrameTexture().get(),
+        m_renderer->GetFrameTexture(),
 		ImVec2(static_cast<float>(width), static_cast<float>(height)),
 		ImColor(255, 255, 255, 255),
 		ImColor(50, 127, 166, 255)

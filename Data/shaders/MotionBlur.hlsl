@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,12 +19,12 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-static const int MAX_SAMPLES = 16;
+static const uint g_mb_samples = 16;
 
-float4 MotionBlur(float2 texCoord, Texture2D texture_color, Texture2D texture_velocity, Texture2D texture_depth, SamplerState sampler_bilinear)
+float4 MotionBlur(float2 texCoord, Texture2D tex)
 {	
-	float4 color 	= texture_color.Sample(sampler_bilinear, texCoord);	
-	float2 velocity = GetVelocity_Dilate_Max(texCoord, texture_velocity, texture_depth, sampler_bilinear);
+	float4 color 	= tex.Sample(sampler_point_clamp, texCoord);	
+	float2 velocity = GetVelocity_Dilate_Max(texCoord, tex_velocity, tex_depth);
 	
 	// Make velocity scale based on user preference instead of frame rate
 	float velocity_scale = g_motionBlur_strength / g_delta_time;
@@ -34,16 +34,12 @@ float4 MotionBlur(float2 texCoord, Texture2D texture_color, Texture2D texture_ve
 	if (abs(velocity.x) + abs(velocity.y) < EPSILON)
 		return color;
 	
-	// Improve performance by adapting sample count to velocity
-	float speed = length(velocity / g_texel_size);
-	int samples = clamp(int(speed), 1, MAX_SAMPLES);
-		
-	for (int i = 1; i < samples; ++i) 
+    [unroll]
+	for (uint i = 1; i < g_mb_samples; ++i) 
 	{
-		float2 offset 	= velocity * (float(i) / float(samples - 1) - 0.5f);
-		color 			+= texture_color.SampleLevel(sampler_bilinear, texCoord + offset, 0);
+		float2 offset 	= velocity * (float(i) / float(g_mb_samples - 1) - 0.5f);
+		color 			+= tex.SampleLevel(sampler_bilinear_clamp, texCoord + offset, 0);
 	}
-	color /= float(samples);
 
-	return color;
+	return color / float(g_mb_samples);
 }

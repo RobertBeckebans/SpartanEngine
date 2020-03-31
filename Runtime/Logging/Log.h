@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -31,19 +31,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 namespace Spartan
 {
-	// Macros
-	#define LOG_TO_FILE(value)		{ Spartan::Log::m_log_to_file = value; }
-	#define LOG_INFO(text)			{ Spartan::Log::m_caller_name = __FUNCTION__; Spartan::Log::Write(text, Spartan::Log_Type::Log_Info); }
-	#define LOG_WARNING(text)		{ Spartan::Log::m_caller_name = __FUNCTION__; Spartan::Log::Write(text, Spartan::Log_Type::Log_Warning); }
-	#define LOG_ERROR(text)			{ Spartan::Log::m_caller_name = __FUNCTION__; Spartan::Log::Write(text, Spartan::Log_Type::Log_Error); }
-	#define LOGF_INFO(text, ...)	{ Spartan::Log::m_caller_name = __FUNCTION__; Spartan::Log::WriteFInfo(text, __VA_ARGS__); }
-	#define LOGF_WARNING(text, ...)	{ Spartan::Log::m_caller_name = __FUNCTION__; Spartan::Log::WriteFWarning(text, __VA_ARGS__); }
-	#define LOGF_ERROR(text, ...)	{ Spartan::Log::m_caller_name = __FUNCTION__; Spartan::Log::WriteFError(text, __VA_ARGS__); }
+    #define LOG_INFO(text, ...)	    { Spartan::Log::WriteFInfo(std::string(__FUNCTION__)    + ": " + std::string(text), __VA_ARGS__); }
+    #define LOG_WARNING(text, ...)	{ Spartan::Log::WriteFWarning(std::string(__FUNCTION__) + ": " + std::string(text), __VA_ARGS__); }
+    #define LOG_ERROR(text, ...)	{ Spartan::Log::WriteFError(std::string(__FUNCTION__)   + ": " + std::string(text), __VA_ARGS__); }
 
-	// Pre-Made
+	// Standard errors
 	#define LOG_ERROR_GENERIC_FAILURE()		LOG_ERROR("Failed.")
 	#define LOG_ERROR_INVALID_PARAMETER()	LOG_ERROR("Invalid parameter.")
 	#define LOG_ERROR_INVALID_INTERNALS()	LOG_ERROR("Invalid internals.")
+
+    // Misc
+    #define LOG_TO_FILE(value) { Spartan::Log::m_log_to_file = value; }
 
 	// Forward declarations
 	class Entity;
@@ -82,18 +80,19 @@ namespace Spartan
         Log() = default;
 
 		// Set a logger to be used (if not set, logging will done in a text file.
-		static void SetLogger(const std::weak_ptr<ILogger>& logger);
+		static void SetLogger(const std::weak_ptr<ILogger>& logger) { m_logger = logger; }
 
-		// const char*
+		// Alpha
 		static void Write(const char* text, const Log_Type type);
-		static void WriteFInfo(const char* text, ...);
+        static void WriteFInfo(const char* text, ...);
 		static void WriteFWarning(const char* text, ...);
 		static void WriteFError(const char* text, ...);
+        static void Write(const std::string& text, const Log_Type type);
+        static void WriteFInfo(const std::string text, ...);
+        static void WriteFWarning(const std::string text, ...);
+        static void WriteFError(const std::string text, ...);
 
-		// std::string
-		static void Write(const std::string& text, const Log_Type type) { Write(text.c_str(), type); }
-		
-		// to_string()
+		// Numeric
 		template <class T, class = typename std::enable_if<
 			std::is_same<T, int>::value ||
 			std::is_same<T, long>::value ||
@@ -124,17 +123,16 @@ namespace Spartan
 		static void Write(const std::weak_ptr<Entity>& entity, Log_Type type);
 		static void Write(const std::shared_ptr<Entity>& entity, Log_Type type);
 
-		static bool m_log_to_file;
-		static std::string m_caller_name;
+		static bool m_log_to_file;     
 
 	private:
         static void FlushBuffer();
 		static void LogString(const char* text, Log_Type type);
 		static void LogToFile(const char* text, Log_Type type);
 
+        static std::mutex m_mutex_log;
 		static std::weak_ptr<ILogger> m_logger;
-		static std::ofstream m_fout;
-		static std::mutex m_mutex_log;
+		static std::ofstream m_fout;	
 		static std::string m_log_file_name;
 		static bool m_first_log;
         static std::vector<LogCmd> m_log_buffer;

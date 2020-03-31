@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -31,7 +31,7 @@ namespace Spartan
 	class SPARTAN_CLASS ILogger
 	{
 	public:
-		virtual ~ILogger() {}
-		virtual void Log(const std::string& log, uint32_t type) = 0;
+		virtual ~ILogger() = default;
+        virtual void Log(const std::string& log, uint32_t type) = 0;
 	};
 }

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,6 +24,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //= INCLUDES ======
 #include "Widget.h"
 #include <memory>
+namespace Spartan { class Context; }
 //=================
 
 namespace Spartan { class Entity; }
@@ -46,7 +47,7 @@ private:
 
 	// Misc
 	void Popups();
-	void PopupContextMenu();	
+	void PopupContextMenu() const;	
 	void PopupEntityRename() const;
 	static void HandleKeyShortcuts();
 
@@ -59,10 +60,12 @@ private:
 	static void ActionEntityCreateCylinder();
 	static void ActionEntityCreateCone();
 	static void ActionEntityCreateCamera();
+    static void ActionEntityCreateTerrain();
 	static void ActionEntityCreateLightDirectional();
 	static void ActionEntityCreateLightPoint();
 	static void ActionEntityCreateLightSpot();
 	static void ActionEntityCreateRigidBody();
+    static void ActionEntityCreateSoftBody();
 	static void ActionEntityCreateCollider();
 	static void ActionEntityCreateConstraint();
 	static void ActionEntityCreateAudioSource();

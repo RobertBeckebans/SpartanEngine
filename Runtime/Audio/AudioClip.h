@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -57,10 +57,10 @@ namespace Spartan
 		AudioClip(Context* context);
 		~AudioClip();
 
-		//= IResource =========================================================
-		bool LoadFromFile(const std::string& file_path) override;
-		bool SaveToFile(const std::string& file_path) override { return true; }
-		//=====================================================================
+        //= IResource ===========================================
+        bool LoadFromFile(const std::string& file_path) override;
+        bool SaveToFile(const std::string& file_path) override;
+        //=======================================================
 
 		bool Play();
 		bool Pause();
@@ -85,7 +85,7 @@ namespace Spartan
 		bool SetPan(float pan);
 
 		// Sets the rolloff
-		bool SetRolloff(std::vector<Math::Vector3> curve_points);
+		bool SetRolloff(const std::vector<Math::Vector3>& curve_points);
 		bool SetRolloff(Rolloff rolloff);
 
 		// Makes the audio use the 3D attributes of the transform
@@ -114,6 +114,6 @@ namespace Spartan
 		float m_minDistance;
 		float m_maxDistance;
 		int m_modeRolloff;
-		int m_result;	
+		int m_result;
 	};
 }

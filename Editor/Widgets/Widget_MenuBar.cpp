@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,11 +19,12 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ==============
+//= INCLUDES ===============
 #include "Widget_MenuBar.h"
 #include "../FileDialog.h"
 #include "Core/Settings.h"
-//=========================
+#include "Rendering\Model.h"
+//==========================
 
 //= NAMESPACES ==========
 using namespace std;
@@ -44,9 +45,10 @@ namespace _Widget_MenuBar
 
 Widget_MenuBar::Widget_MenuBar(Context* context) : Widget(context)
 {
+    m_title                 = "MenuBar";
 	m_is_window				= false;
 	m_fileDialog			= make_unique<FileDialog>(m_context, true, FileDialog_Type_FileSelection, FileDialog_Op_Open, FileDialog_Filter_Scene);
-	_Widget_MenuBar::world	= m_context->GetSubsystem<World>().get();
+	_Widget_MenuBar::world	= m_context->GetSubsystem<World>();
 }
 
 void Widget_MenuBar::Tick()
@@ -109,7 +111,7 @@ void Widget_MenuBar::Tick()
     ShowAboutWindow();
 }
 
-void Widget_MenuBar::ShowFileDialog()
+void Widget_MenuBar::ShowFileDialog() const
 {
     if (_Widget_MenuBar::g_fileDialogVisible)
     {
@@ -141,7 +143,7 @@ void Widget_MenuBar::ShowFileDialog()
 	}
 }
 
-void Widget_MenuBar::ShowAboutWindow()
+void Widget_MenuBar::ShowAboutWindow() const
 {
     if (!_Widget_MenuBar::g_showAboutWindow)
         return;
@@ -151,7 +153,10 @@ void Widget_MenuBar::ShowAboutWindow()
 
 	ImGui::Text("Spartan %s", engine_version);
 	ImGui::Text("Author: Panos Karabelas");
-	ImGui::SameLine(600); ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 5);  if (ImGui::Button("GitHub"))
+	ImGui::SameLine(ImGui::GetWindowContentRegionWidth());
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() - 55);
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 5);
+    if (ImGui::Button("GitHub"))
 	{
 		FileSystem::OpenDirectoryWindow("https://github.com/PanosK92/SpartanEngine");
 	}	
@@ -179,32 +184,17 @@ void Widget_MenuBar::ShowAboutWindow()
 	ImGui::Separator();
 
 	ImGui::Text("Third party libraries");
-	const auto library = [](const char* name, const string& version, const char* url)
-	{
-		ImGui::BulletText(name);
-		ImGui::SameLine(140); ImGui::Text(("v" + version).c_str());
-		ImGui::SameLine(250); ImGui::PushID(url);  if (ImGui::Button("URL")) { FileSystem::OpenDirectoryWindow(url); } ImGui::PopID();
-	};
-
-#if defined(API_GRAPHICS_D3D11)
-    const char* api_name = "DirectX";
-    const char* api_link = "https://www.microsoft.com/en-us/download/details.aspx?id=17431";
-#elif defined(API_GRAPHICS_VULKAN)
-    const char* api_name = "Vulkan";
-    const char* api_link = "https://www.khronos.org/vulkan/";
-#endif
-
-    auto& settings = m_context->GetSubsystem<Settings>();
-
-	library(api_name,	    settings->m_versionGraphicsAPI,	api_link);
-	library("AngelScript",	settings->m_versionAngelScript,	"https://www.angelcode.com/angelscript/");
-	library("Assimp",		settings->m_versionAssimp,		"https://github.com/assimp/assimp");
-	library("Bullet",		settings->m_versionBullet,		"https://github.com/bulletphysics/bullet3");
-	library("FMOD",			settings->m_versionFMOD,		"https://www.fmod.com/");
-	library("FreeImage",	settings->m_versionFreeImage,	"https://sourceforge.net/projects/freeimage/files/Source%20Distribution/");
-	library("FreeType",		settings->m_versionFreeType,	"https://www.freetype.org/");
-	library("ImGui",		settings->m_versionImGui,		"https://github.com/ocornut/imgui");
-	library("PugiXML",		settings->m_versionPugiXML,		"https://github.com/zeux/pugixml");
+    {
+        ImGui::Text("Name");
+        ImGui::SameLine(140); ImGui::Text("Version");
+        ImGui::SameLine(250); ImGui::Text("URL");
+        for (const ThirdPartyLib& lib : m_context->GetSubsystem<Settings>()->GetThirdPartyLibs())
+        {
+            ImGui::BulletText(lib.name.c_str());
+            ImGui::SameLine(140); ImGui::Text(lib.version.c_str());
+            ImGui::SameLine(250); ImGui::PushID(lib.url.c_str());  if (ImGui::Button(lib.url.c_str())) { FileSystem::OpenDirectoryWindow(lib.url); } ImGui::PopID();
+        }
+    }
 
 	ImGui::End();
 }

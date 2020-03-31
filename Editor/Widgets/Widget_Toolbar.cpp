@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -26,9 +26,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "Widget_ShaderEditor.h"
 #include "Widget_RenderOptions.h"
 #include "Core/Engine.h"
-#include "Core/Settings.h"
-#include "Rendering/Renderer.h"
-#include "../IconProvider.h"
+#include "Rendering\Model.h"
 #include "../ImGui_Extension.h"
 //===============================
 
@@ -51,7 +49,7 @@ Widget_Toolbar::Widget_Toolbar(Context* context) : Widget(context)
 		ImGuiWindowFlags_NoTitleBar         |
         ImGuiWindowFlags_NoDocking;
 
-    m_callback_begin_pre = [this]()
+    m_callback_on_visible = [this]()
     {
         auto& ctx = *ImGui::GetCurrentContext();
         ctx.NextWindowData.MenuBarOffsetMinVal = ImVec2(ctx.Style.DisplaySafeAreaPadding.x, Max(ctx.Style.DisplaySafeAreaPadding.y - ctx.Style.FramePadding.y, 0.0f));
@@ -61,7 +59,7 @@ Widget_Toolbar::Widget_Toolbar(Context* context) : Widget(context)
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Vector2(0, 5));
     };
 
-    m_callback_begin_post = [this]()
+    m_callback_on_begin = [this]()
     {
         ImGui::PopStyleVar();
     };
@@ -76,7 +74,7 @@ Widget_Toolbar::Widget_Toolbar(Context* context) : Widget(context)
 
 void Widget_Toolbar::Tick()
 {
-    auto show_button = [this](Icon_Type icon_type, function<bool()> get_visibility, function<void()> make_visible)
+    auto show_button = [this](Icon_Type icon_type, const function<bool()>& get_visibility, const function<void()>& make_visible)
     {
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button, get_visibility() ? ImGui::GetStyle().Colors[ImGuiCol_ButtonActive] : ImGui::GetStyle().Colors[ImGuiCol_Button]);
@@ -93,7 +91,7 @@ void Widget_Toolbar::Tick()
     for (auto& widget_it : m_widgets)
     {
         Widget* widget          = widget_it.second.get();
-        Icon_Type widget_icon   = widget_it.first;
+        const Icon_Type widget_icon   = widget_it.first;
 
         show_button(widget_icon, [this, &widget](){ return widget->GetVisible(); }, [this, &widget]() { widget->SetVisible(true); });
 

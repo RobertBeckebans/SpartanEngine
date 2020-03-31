@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -43,19 +43,21 @@ namespace Spartan
 		Transform_Gizmo(Context* context);
 		~Transform_Gizmo() = default;
 
-		const std::shared_ptr<Entity>& SetSelectedEntity(const std::shared_ptr<Entity>& entity); 
+        std::weak_ptr<Spartan::Entity> SetSelectedEntity(const std::shared_ptr<Entity>& entity);
 		bool Update(Camera* camera, float handle_size, float handle_speed);
-		uint32_t GetIndexCount();
-		std::shared_ptr<RHI_VertexBuffer> GetVertexBuffer();
-		std::shared_ptr<RHI_IndexBuffer> GetIndexBuffer();
-		const TransformHandle& GetHandle() const;
-		bool DrawXYZ() const { return m_type == TransformHandle_Scale; }
+		uint32_t GetIndexCount()                    const;
+		const RHI_VertexBuffer* GetVertexBuffer()   const;
+		const RHI_IndexBuffer* GetIndexBuffer()     const;
+		const TransformHandle& GetHandle()          const;
+		bool DrawXYZ()                              const { return m_type == TransformHandle_Scale; }
+        bool IsEntitySelected()                     const { return m_is_editing; }
+        const Entity* GetSelectedEntity()           const { return m_entity_selected.lock().get(); }
 		
 	private:
 		bool m_is_editing               = false;
 		bool m_just_finished_editing    = false;
 
-		std::shared_ptr<Entity> m_entity_selected;
+		std::weak_ptr<Entity> m_entity_selected;
 		TransformHandle m_handle_position;
 		TransformHandle m_handle_rotation;
 		TransformHandle m_handle_scale;

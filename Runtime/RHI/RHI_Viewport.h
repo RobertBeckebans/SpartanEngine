@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,14 +21,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ==================
-#include "../Core/EngineDefs.h"
-#include "../Core/Spartan_Object.h"
-//=============================
+//= INCLUDES ==========
+#include "RHI_Object.h"
+//=====================
 
 namespace Spartan
 {
-	class SPARTAN_CLASS RHI_Viewport : public Spartan_Object
+	class SPARTAN_CLASS RHI_Viewport : public RHI_Object
 	{
 	public:
 		RHI_Viewport(const float x = 0.0f, const float y = 0.0f, const float width = 0.0f, const float height = 0.0f, const float depth_min = 0.0f, const float depth_max = 1.0f)
@@ -69,11 +68,11 @@ namespace Spartan
 		bool IsDefined() const			
 		{
 			return
-				x			!= 0.0f && 
-				y			!= 0.0f && 
-				width		!= 0.0f && 
-				height		!= 0.0f && 
-				depth_min	!= 0.0f && 
+				x			!= 0.0f || 
+				y			!= 0.0f || 
+				width		!= 0.0f || 
+				height		!= 0.0f || 
+				depth_min	!= 0.0f || 
 				depth_max	!= 0.0f;
 		}
 
@@ -85,5 +84,7 @@ namespace Spartan
 		float height	= 0.0f;
 		float depth_min	= 0.0f;
 		float depth_max	= 0.0f;
+
+        static const RHI_Viewport Undefined;
 	};
 }

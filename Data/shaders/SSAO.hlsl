@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,25 +19,14 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES =========
+//= INCLUDES ============
 #include "Common.hlsl"
 #include "Dithering.hlsl"
-//====================
-
-//= TEXTURES ======================
-Texture2D texNormal : register(t0);
-Texture2D texDepth  : register(t1);
-Texture2D texNoise  : register(t2);
-//=================================
-
-//= SAMPLERS ===================================
-SamplerState samplerLinear_clamp : register(s0);
-SamplerState samplerLinear_wrap : register(s1);
-//==============================================
+//=======================
 
 static const int sample_count		= 16;
-static const float radius			= 0.5f;
-static const float intensity    	= 2.0f;
+static const float radius			= 3.0f;
+static const float intensity    	= 1.5f;
 static const float2 noiseScale  	= float2(g_resolution.x / 128.0f, g_resolution.y / 128.0f);
 
 static const float3 sampleKernel[64] =
@@ -110,42 +99,39 @@ static const float3 sampleKernel[64] =
 
 float mainPS(Pixel_PosUv input) : SV_TARGET
 {
-	float2 uv				= input.uv;  
-    float depth      		= texDepth.Sample(samplerLinear_clamp, uv).r;
-    float3 center_pos       = get_world_position_from_depth(depth, uv);
-    float3 center_normal    = normal_decode(texNormal.Sample(samplerLinear_clamp, uv).xyz);
-	float3 noise			= unpack(texNoise.Sample(samplerLinear_wrap, uv * noiseScale).xyz);		
-	float occlusion_acc     = 0.0f;
-    float3 color            = float3(0.0f, 0.0f, 0.0f);
-
-	// Compute range based dithered radius
-	float dither 		= Dither(uv + g_taa_jitterOffset).x * 500;
-	float radius_depth	= get_linear_depth(depth) / (1.0f / (radius)) * dither;
+	float2 uv               = input.uv;
+    float3 center_pos       = get_position(uv);
+    float3 center_normal    = get_normal(uv);		
 
 	// Construct TBN
+	float3 noise	= unpack(tex_normal_noise.Sample(sampler_bilinear_wrap, input.uv * noiseScale).xyz);		
 	float3 tangent	= normalize(noise - center_normal * dot(noise, center_normal));
 	float3x3 TBN	= makeTBN(center_normal, tangent);
 
     // Occlusion
+	float occlusion = 0.0f;
+	[unroll]
     for (int i = 0; i < sample_count; i++)
     {	
+        // Apply dithering
+        float3 dither_value = dither_temporal(uv, 500.0f);
+
 		// Compute sample uv
-		float3 offset 	= mul(sampleKernel[i], TBN);
-		float3 ray_pos	= center_pos + offset * radius_depth;
-		float2 ray_uv 	= project(ray_pos, g_viewProjection);
+		float3 offset   = mul(sampleKernel[i], TBN) * dither_value;
+		float3 ray_pos  = center_pos + offset * radius;
+		float2 ray_uv   = project_uv(ray_pos, g_viewProjection);
 		
-		// Acquire/Compute sample data
-        float3 sample_pos      			= get_world_position_from_depth(texDepth, samplerLinear_clamp, ray_uv);
-        float3 center_to_sample			= sample_pos - center_pos;
-		float center_to_sample_distance	= length(center_to_sample);
-		float3 center_to_sample_dir 	= normalize(center_to_sample);
+		// Compute sample data
+        float3 sample_pos               = get_position(ray_uv);
+        float3 center_to_sample         = sample_pos - center_pos;
+		float center_to_sample_distance = length(center_to_sample);
+		float3 center_to_sample_dir     = normalize(center_to_sample);
 		
 		// Accumulate
-		float occlusion		= dot(center_normal, center_to_sample_dir);
-		float rangeCheck	= center_to_sample_distance <= radius_depth;
-		occlusion_acc 		+= occlusion * rangeCheck * intensity;
+		float occlusion_factor  = dot(center_normal, center_to_sample_dir);
+		float range_check       = smoothstep(0.0f, 1.0f, radius / center_to_sample_distance);
+		occlusion               += occlusion_factor * range_check * intensity;
     }
-    occlusion_acc /= (float)sample_count;
 
-	return saturate(1.0f - occlusion_acc);
+	return 1.0f - saturate(occlusion / (float)sample_count);
 }

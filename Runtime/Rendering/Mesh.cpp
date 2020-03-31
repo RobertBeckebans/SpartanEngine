@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -40,8 +40,8 @@ namespace Spartan
 		m_indices.shrink_to_fit();
 	}
 
-	uint32_t Mesh::Geometry_MemoryUsage()
-	{
+	uint32_t Mesh::Geometry_MemoryUsage() const
+    {
 		uint32_t size = 0;
 		size += uint32_t(m_vertices.size()	* sizeof(RHI_Vertex_PosTexNorTan));
 		size += uint32_t(m_indices.size()	* sizeof(uint32_t));
@@ -58,13 +58,13 @@ namespace Spartan
 		}
 
 		// Indices
-		auto indexFirst	= m_indices.begin() + indexOffset;
-		auto indexLast	= m_indices.begin() + indexOffset + indexCount;
+        const auto indexFirst	= m_indices.begin() + indexOffset;
+        const auto indexLast	= m_indices.begin() + indexOffset + indexCount;
 		*indices		= vector<uint32_t>(indexFirst, indexLast);
 
 		// Vertices
-		auto vertexFirst	= m_vertices.begin() + vertexOffset;
-		auto vertexLast		= m_vertices.begin() + vertexOffset + vertexCount;
+        const auto vertexFirst	= m_vertices.begin() + vertexOffset;
+        const auto vertexLast		= m_vertices.begin() + vertexOffset + vertexCount;
 		*vertices			= vector<RHI_Vertex_PosTexNorTan>(vertexFirst, vertexLast);
 	}
 
@@ -72,7 +72,7 @@ namespace Spartan
 	{
 		if (vertexOffset)
 		{
-			*vertexOffset = (uint32_t)m_vertices.size();
+			*vertexOffset = static_cast<uint32_t>(m_vertices.size());
 		}
 
 		m_vertices.insert(m_vertices.end(), vertices.begin(), vertices.end());
@@ -80,7 +80,7 @@ namespace Spartan
 
 	uint32_t Mesh::Vertices_Count() const
 	{
-		return (uint32_t)m_vertices.size();
+		return static_cast<uint32_t>(m_vertices.size());
 	}
 
 	void Mesh::Vertex_Add(const RHI_Vertex_PosTexNorTan& vertex)
@@ -92,7 +92,7 @@ namespace Spartan
 	{
 		if (indexOffset)
 		{
-			*indexOffset = (uint32_t)m_indices.size();
+			*indexOffset = static_cast<uint32_t>(m_indices.size());
 		}
 
 		m_indices.insert(m_indices.end(), indices.begin(), indices.end());

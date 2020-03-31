@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,6 +22,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //= INCLUDES =================
 #include "ButtonColorPicker.h"
 #include "ImGui_Extension.h"
+#include "Rendering\Model.h"
 //============================
 
 //= NAMESPACES ================
@@ -74,7 +75,7 @@ void ButtonColorPicker::ShowColorPicker()
 	ImGui::Begin(m_windowTitle.c_str(), &m_isVisible, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize);
 	ImGui::SetWindowFocus();
 
-	int misc_flags = 
+    const int misc_flags = 
 		(ButtonColorPicker_Settings::hdr ? ImGuiColorEditFlags_HDR : 0) | 
 		(ButtonColorPicker_Settings::alpha_half_preview ? ImGuiColorEditFlags_AlphaPreviewHalf :
 		(ButtonColorPicker_Settings::alpha_preview ? ImGuiColorEditFlags_AlphaPreview : 0)) | 

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -28,11 +28,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "../Core/Settings.h"
 #include "../Profiling/Profiler.h"
 #include "../Rendering/Renderer.h"
-#pragma warning(push, 0) // Hide warnings which belong to Bullet
+#pragma warning(push, 0) // Hide warnings belonging to Bullet
+#include <btBulletDynamicsCommon.h>
 #include <BulletCollision/BroadphaseCollision/btDbvtBroadphase.h>
 #include <BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h>
 #include <BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolver.h>
 #include <BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h>
+#include <BulletSoftBody/btSoftBody.h>
+#include <BulletSoftBody/btSoftRigidDynamicsWorld.h>
+#include <BulletSoftBody/btSoftBodyRigidBodyCollisionConfiguration.h>
 #pragma warning(pop)
 //==============================================================================
 
@@ -42,47 +46,80 @@ using namespace Spartan::Math;
 //=============================
 
 namespace Spartan
-{ 
+{
+    static const bool m_soft_body_support = true;
+
 	Physics::Physics(Context* context) : ISubsystem(context)
 	{
-		// Create physics objects
-		m_broadphase				= new btDbvtBroadphase();
-		m_collision_configuration	= new btDefaultCollisionConfiguration();
-		m_dispatcher				= new btCollisionDispatcher(m_collision_configuration);
-		m_constraint_solver			= new btSequentialImpulseConstraintSolver();
-		m_world						= new btDiscreteDynamicsWorld(m_dispatcher, m_broadphase, m_constraint_solver, m_collision_configuration);
+        m_broadphase        = new btDbvtBroadphase();
+        m_constraint_solver = new btSequentialImpulseConstraintSolver();
 
-		// Setup world
-		m_world->setGravity(ToBtVector3(m_gravity));
-		m_world->getDispatchInfo().m_useContinuous	= true;
-		m_world->getSolverInfo().m_splitImpulse		= false;
-		m_world->getSolverInfo().m_numIterations	= m_max_solve_iterations;
+        if (m_soft_body_support)
+        {
+            // Create
+            m_collision_configuration  = new btSoftBodyRigidBodyCollisionConfiguration();
+            m_collision_dispatcher     = new btCollisionDispatcher(m_collision_configuration);
+            m_world                    = new btSoftRigidDynamicsWorld(m_collision_dispatcher, m_broadphase, m_constraint_solver, m_collision_configuration);
+
+            // Setup         
+            m_world_info = new btSoftBodyWorldInfo();
+            m_world_info->m_sparsesdf.Initialize();
+            m_world->getDispatchInfo().m_enableSPU  = true;
+            m_world_info->m_dispatcher              = m_collision_dispatcher;
+            m_world_info->m_broadphase              = m_broadphase;
+            m_world_info->air_density               = (btScalar)1.2;
+            m_world_info->water_density             = 0;
+            m_world_info->water_offset              = 0;
+            m_world_info->water_normal              = btVector3(0, 0, 0);
+            m_world_info->m_gravity                 = ToBtVector3(m_gravity);
+
+        }
+        else
+        {
+            // Create
+            m_collision_configuration   = new btDefaultCollisionConfiguration();
+            m_collision_dispatcher      = new btCollisionDispatcher(m_collision_configuration);
+            m_world                     = new btDiscreteDynamicsWorld(m_collision_dispatcher, m_broadphase, m_constraint_solver, m_collision_configuration);
+        }
+
+        // Setup
+        m_world->setGravity(ToBtVector3(m_gravity));
+        m_world->getDispatchInfo().m_useContinuous  = true;
+        m_world->getSolverInfo().m_splitImpulse     = false;
+        m_world->getSolverInfo().m_numIterations    = m_max_solve_iterations;
 	}
 
 	Physics::~Physics()
 	{
-		safe_delete(m_world);
-		safe_delete(m_constraint_solver);
-		safe_delete(m_dispatcher);
-		safe_delete(m_collision_configuration);
-		safe_delete(m_broadphase);
-		safe_delete(m_debug_draw);
+        safe_delete(m_world);
+        safe_delete(m_constraint_solver);
+        safe_delete(m_collision_dispatcher);
+        safe_delete(m_collision_configuration);
+        safe_delete(m_broadphase);
+        safe_delete(m_world_info);
+        safe_delete(m_debug_draw);
 	}
 
 	bool Physics::Initialize()
 	{
         // Get dependencies
-		m_renderer = m_context->GetSubsystem<Renderer>().get();
-		m_profiler = m_context->GetSubsystem<Profiler>().get();
+		m_renderer = m_context->GetSubsystem<Renderer>();
+		m_profiler = m_context->GetSubsystem<Profiler>();
 
         // Get version
         const auto major = to_string(btGetVersion() / 100);
         const auto minor = to_string(btGetVersion()).erase(0, 1);
-        m_context->GetSubsystem<Settings>()->m_versionBullet = major + "." + minor;
+        m_context->GetSubsystem<Settings>()->RegisterThirdPartyLib("Bullet", major + "." + minor, "https://github.com/bulletphysics/bullet3");
 
 		// Enabled debug drawing
-		m_debug_draw = new PhysicsDebugDraw(m_renderer);
-		m_world->setDebugDrawer(m_debug_draw);
+        {
+            m_debug_draw = new PhysicsDebugDraw(m_renderer);
+
+            if (m_world)
+            {
+                m_world->setDebugDrawer(m_debug_draw);
+            }
+        }
 
 		return true;
 	}
@@ -93,16 +130,16 @@ namespace Spartan
 			return;
 		
 		// Debug draw
-		if (m_renderer->GetFlags() & Render_Gizmo_Physics)
+		if (m_renderer->GetOptions() & Render_Debug_Physics)
 		{
-			m_world->debugDrawWorld();
+            m_world->debugDrawWorld();
 		}
 
 		// Don't simulate physics if they are turned off or the we are in editor mode
 		if (!m_context->m_engine->EngineMode_IsSet(Engine_Physics) || !m_context->m_engine->EngineMode_IsSet(Engine_Game))
 			return;
 
-		TIME_BLOCK_START_CPU(m_profiler);
+        SCOPED_TIME_BLOCK(m_profiler);
 
 		// This equation must be met: timeStep < maxSubSteps * fixedTimeStep
 		auto internal_time_step	= 1.0f / m_internal_fps;
@@ -119,13 +156,66 @@ namespace Spartan
 
 		// Step the physics world. 
 		m_simulating = true;
-		m_world->stepSimulation(delta_time_sec, max_substeps, internal_time_step);
+        m_world->stepSimulation(delta_time_sec, max_substeps, internal_time_step);
 		m_simulating = false;
-
-		TIME_BLOCK_END(m_profiler);
 	}
 
-	Vector3 Physics::GetGravity() const
+    void Physics::AddBody(btRigidBody* body) const
+    {
+        if (!m_world)
+            return;
+
+        m_world->addRigidBody(body);
+    }
+
+    void Physics::RemoveBody(btRigidBody*& body) const
+    {
+        if (!m_world)
+            return;
+
+        m_world->removeRigidBody(body);
+        delete body->getMotionState();
+        safe_delete(body);
+    }
+
+    void Physics::AddConstraint(btTypedConstraint* constraint, bool collision_with_linked_body /*= true*/) const
+    {
+        if (!m_world)
+            return;
+
+        m_world->addConstraint(constraint, !collision_with_linked_body);
+    }
+
+    void Physics::RemoveConstraint(btTypedConstraint*& constraint) const
+    {
+        if (!m_world)
+            return;
+
+        m_world->removeConstraint(constraint);
+        safe_delete(constraint);
+    }
+
+    void Physics::AddBody(btSoftBody* body) const
+    {
+        if (!m_world)
+            return;
+
+        if (btSoftRigidDynamicsWorld* world = static_cast<btSoftRigidDynamicsWorld*>(m_world))
+        {
+            world->addSoftBody(body);
+        }
+    }
+
+    void Physics::RemoveBody(btSoftBody*& body) const
+    {
+        if (btSoftRigidDynamicsWorld* world = static_cast<btSoftRigidDynamicsWorld*>(m_world))
+        {
+            world->removeSoftBody(body);
+            safe_delete(body);
+        }
+    }
+
+    Vector3 Physics::GetGravity() const
 	{
 		auto gravity = m_world->getGravity();
 		if (!gravity)

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,7 +24,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //= INCLUDES =====================
 #include "IComponent.h"
 #include <vector>
-#include <memory>
 #include "../../Math/Vector3.h"
 #include "../../Math/Quaternion.h"
 #include "../../Math/Matrix.h"
@@ -50,21 +49,21 @@ namespace Spartan
 		void UpdateTransform();
 
 		//= POSITION ================================================================
-		auto GetPosition()						{ return m_matrix.GetTranslation(); }
+		auto GetPosition() const { return m_matrix.GetTranslation(); }
 		const auto& GetPositionLocal() const	{ return m_positionLocal; }
 		void SetPosition(const Math::Vector3& position);
 		void SetPositionLocal(const Math::Vector3& position);
 		//===========================================================================
 
-		//= ROTATION =============================================================
-		auto GetRotation()						{ return m_matrix.GetRotation(); }
-		const auto& GetRotationLocal() const	{ return m_rotationLocal; }
+		//= ROTATION ===========================================================
+		Math::Quaternion GetRotation()  const { return m_matrix.GetRotation(); }
+		const auto& GetRotationLocal()  const { return m_rotationLocal; }
 		void SetRotation(const Math::Quaternion& rotation);
 		void SetRotationLocal(const Math::Quaternion& rotation);
-		//========================================================================
+		//======================================================================
 
 		//= SCALE =========================================================
-		auto GetScale()						{ return m_matrix.GetScale(); }
+		auto GetScale() const { return m_matrix.GetScale(); }
 		const auto& GetScaleLocal() const	{ return m_scaleLocal; }
 		void SetScale(const Math::Vector3& scale);
 		void SetScaleLocal(const Math::Vector3& scale);
@@ -104,15 +103,10 @@ namespace Spartan
 		//======================================================================================
 
 		void LookAt(const Math::Vector3& v) { m_lookAt = v; }
-		auto& GetMatrix()		{ return m_matrix; }
-		auto& GetLocalMatrix()	{ return m_matrixLocal; }
-
-		//= CONSTANT BUFFERS ======================================================================================================================
-		void UpdateConstantBuffer(const std::shared_ptr<RHI_Device>& rhi_device, const Math::Matrix& view_projection);
-		const auto& GetConstantBuffer() const { return m_cb_gbuffer_gpu; }
-		void UpdateConstantBufferLight(const std::shared_ptr<RHI_Device>& rhi_device, const Math::Matrix& view_projection, uint32_t cascade_index);
-		const auto& GetConstantBufferLight(const uint32_t cascade_index) { return m_light_cascades[cascade_index].buffer; }
-		//=========================================================================================================================================
+		const auto& GetMatrix()         const { return m_matrix; }     
+		const auto& GetLocalMatrix()    const { return m_matrixLocal; }
+        const auto& GetWvpLastFrame()   const { return m_wvp_previous; }
+        void SetWvpLastFrame(const Math::Matrix& matrix) { m_wvp_previous = matrix;}
 
 	private:
 		Math::Matrix GetParentTransformMatrix() const;
@@ -129,23 +123,6 @@ namespace Spartan
 		Transform* m_parent; // the parent of this transform
 		std::vector<Transform*> m_children; // the children of this transform
 
-		// Constant buffer
-		struct CB_Gbuffer
-		{
-			Math::Matrix model;
-			Math::Matrix mvp_current;
-			Math::Matrix mvp_previous;
-		};
-		CB_Gbuffer m_cb_gbuffer_cpu;
-		std::shared_ptr<RHI_ConstantBuffer> m_cb_gbuffer_gpu;
 		Math::Matrix m_wvp_previous;
-
-		// Constant buffer
-		struct LightCascade
-		{
-			Math::Matrix data;
-			std::shared_ptr<RHI_ConstantBuffer> buffer;
-		};
-		std::vector<LightCascade> m_light_cascades;
 	};
 }

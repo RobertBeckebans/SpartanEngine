@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -48,11 +48,11 @@ namespace Spartan
 		//============================================
 
 		//= PROPERTIES ===================================================================
-		void SetAudioClip(const std::shared_ptr<AudioClip>& audio_clip);
-		std::string GetAudioClipName();
+        void SetAudioClip(const std::string& file_path);
+		std::string GetAudioClipName() const;
 
-		bool Play();
-		bool Stop();
+		bool Play() const;
+		bool Stop() const;
 
 		bool GetMute() const { return m_mute; }
 		void SetMute(bool mute);
@@ -78,7 +78,6 @@ namespace Spartan
 
 	private:
 		std::shared_ptr<AudioClip> m_audio_clip;
-		std::string m_file_path;
 		bool m_mute;
 		bool m_play_on_start;
 		bool m_loop;

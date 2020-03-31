@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -31,6 +31,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 namespace Spartan
 {
 	class Mesh;
+
 	namespace Math
 	{
 		class Matrix;
@@ -44,6 +45,9 @@ namespace Spartan
 			// Construct from minimum and maximum vectors.
 			BoundingBox(const Vector3& min, const Vector3& max);
 
+            // Construct from points
+            BoundingBox(const std::vector<Vector3>& points);
+
 			// Construct from vertices
 			BoundingBox(const std::vector<RHI_Vertex_PosTexNorTan>& vertices);
 
@@ -51,13 +55,9 @@ namespace Spartan
 
 			// Assign from bounding box
 			BoundingBox& operator =(const BoundingBox& rhs)
-			{
-				m_min = rhs.m_min;
-				m_max = rhs.m_max;
-				return *this;
-			}
+            = default;
 
-			// Returns the center
+            // Returns the center
 			Vector3 GetCenter() const	{ return (m_max + m_min) * 0.5f; }
 
 			// Returns the size
@@ -73,10 +73,7 @@ namespace Spartan
 			Intersection IsInside (const BoundingBox& box) const;
 
 			// Returns a transformed bounding box
-			BoundingBox TransformToAabb(const Matrix& transform);
-
-            // Returns a transformed bounding box
-            BoundingBox TransformToOobb(const Matrix& transform);
+			BoundingBox Transform(const Matrix& transform) const;
 
 			// Merge with another bounding box
 			void Merge(const BoundingBox& box);

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -126,10 +126,10 @@ namespace Spartan
         const auto major = ss.str().erase(1, 4);
         const auto minor = ss.str().erase(0, 1).erase(2, 2);
         const auto rev = ss.str().erase(0, 3);
-        m_context->GetSubsystem<Settings>()->m_versionFMOD = major + "." + minor + "." + rev;
+        m_context->GetSubsystem<Settings>()->RegisterThirdPartyLib("FMOD", major + "." + minor + "." + rev, "https://www.fmod.com/download");
 
         // Get dependencies
-        m_profiler = m_context->GetSubsystem<Profiler>().get();
+        m_profiler = m_context->GetSubsystem<Profiler>();
 
         // Subscribe to events
         SUBSCRIBE_TO_EVENT(Event_World_Unload, [this](Variant) { m_listener = nullptr; });
@@ -146,7 +146,7 @@ namespace Spartan
 		if (!m_initialized)
 			return;
 
-		TIME_BLOCK_START_CPU(m_profiler);
+        SCOPED_TIME_BLOCK(m_profiler);
 
 		// Update FMOD
 		m_result_fmod = m_system_fmod->update();
@@ -156,7 +156,6 @@ namespace Spartan
 			return;
 		}
 
-		//= 3D Attributes =============================================
 		if (m_listener)
 		{
 			auto position = m_listener->GetPosition();
@@ -178,9 +177,6 @@ namespace Spartan
 				return;
 			}
 		}
-		//=============================================================
-
-		TIME_BLOCK_END(m_profiler);
 	}
 
     void Audio::SetListenerTransform(Transform* transform)
@@ -190,6 +186,6 @@ namespace Spartan
 
 	void Audio::LogErrorFmod(int error) const
 	{
-		LOG_ERROR("Audio::FMOD: " + string(FMOD_ErrorString(static_cast<FMOD_RESULT>(error))));
+		LOG_ERROR("%s", FMOD_ErrorString(static_cast<FMOD_RESULT>(error)));
 	}
 }

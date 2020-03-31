@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,12 +22,16 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //= INCLUDES ======================
 #include "ResourceCache.h"
 #include "ProgressReport.h"
+#include "Import/ImageImporter.h"
+#include "Import/ModelImporter.h"
+#include "Import/FontImporter.h"
 #include "../World/World.h"
 #include "../World/Entity.h"
 #include "../IO/FileStream.h"
-#include "../Core/EventSystem.h"
 #include "../RHI/RHI_Texture2D.h"
 #include "../RHI/RHI_TextureCube.h"
+#include "../Audio/AudioClip.h"
+#include "../Rendering/Model.h"
 //=================================
 
 //= NAMESPACES ================
@@ -39,19 +43,19 @@ namespace Spartan
 {
 	ResourceCache::ResourceCache(Context* context) : ISubsystem(context)
 	{
-		string data_dir = GetDataDirectory();
+        const string data_dir = "Data/";
 
 		// Add engine standard resource directories
-		AddDataDirectory(Asset_Cubemaps,		data_dir + "cubemaps//");
-		AddDataDirectory(Asset_Fonts,			data_dir + "fonts//");
-		AddDataDirectory(Asset_Icons,			data_dir + "icons//");
-		AddDataDirectory(Asset_Scripts,			data_dir + "scripts//");
-		AddDataDirectory(Asset_ShaderCompiler,	data_dir + "shader_compiler//");	
-		AddDataDirectory(Asset_Shaders,			data_dir + "shaders//");
-		AddDataDirectory(Asset_Textures,		data_dir + "textures//");
+		AddDataDirectory(Asset_Cubemaps,		data_dir + "environment");
+		AddDataDirectory(Asset_Fonts,			data_dir + "fonts");
+		AddDataDirectory(Asset_Icons,			data_dir + "icons");
+		AddDataDirectory(Asset_Scripts,			data_dir + "scripts");
+		AddDataDirectory(Asset_ShaderCompiler,	data_dir + "shader_compiler");	
+		AddDataDirectory(Asset_Shaders,			data_dir + "shaders");
+		AddDataDirectory(Asset_Textures,		data_dir + "textures");
 
 		// Create project directory
-		SetProjectDirectory("Project//");
+		SetProjectDirectory("Project/");
 
 		// Subscribe to events
 		SUBSCRIBE_TO_EVENT(Event_World_Save,	EVENT_HANDLER(SaveResourcesToFiles));
@@ -100,7 +104,8 @@ namespace Spartan
 				return resource;
 		}
 
-		return m_empty_resource;
+        static shared_ptr<IResource> empty;
+		return empty;
 	}
 
 	vector<shared_ptr<IResource>> ResourceCache::GetByType(const Resource_Type type /*= Resource_Unknown*/)
@@ -122,34 +127,6 @@ namespace Spartan
 		return resources;
 	}
 
-	uint32_t ResourceCache::GetMemoryUsage(Resource_Type type /*= Resource_Unknown*/)
-	{
-		uint32_t size = 0;
-
-		if (type = Resource_Unknown)
-		{
-			for (const auto& group : m_resource_groups)
-			{
-				for (const auto& resource : group.second)
-				{
-					if (!resource)
-						continue;
-
-					size += resource->GetMemoryUsage();
-				}
-			}
-		}
-		else
-		{
-			for (const auto& resource : m_resource_groups[type])
-			{
-				size += resource->GetMemoryUsage();
-			}
-		}
-
-		return size;
-	}
-
 	void ResourceCache::SaveResourcesToFiles()
 	{
 		// Start progress report
@@ -166,7 +143,7 @@ namespace Spartan
 			return;
 		}
 
-		auto resource_count = GetResourceCount();
+        const auto resource_count = GetResourceCount();
 		ProgressReport::Get().SetJobCount(g_progress_resource_cache, resource_count);
 
 		// Save resource count
@@ -177,15 +154,15 @@ namespace Spartan
 		{
 			for (const auto& resource : resource_group.second)
 			{
-				if (!resource->HasFilePath())
+				if (!resource->HasFilePathNative())
 					continue;
 
 				// Save file path
-				file->Write(resource->GetResourceFilePath());
+				file->Write(resource->GetResourceFilePathNative());
 				// Save type
 				file->Write(static_cast<uint32_t>(resource->GetResourceType()));
 				// Save resource (to a dedicated file)
-				resource->SaveToFile(resource->GetResourceFilePath());
+				resource->SaveToFile(resource->GetResourceFilePathNative());
 
 				// Update progress
 				ProgressReport::Get().IncrementJobsDone(g_progress_resource_cache);
@@ -205,7 +182,7 @@ namespace Spartan
 			return;
 		
 		// Load resource count
-		auto resource_count = file->ReadAs<uint32_t>();
+        const auto resource_count = file->ReadAs<uint32_t>();
 
 		for (uint32_t i = 0; i < resource_count; i++)
 		{
@@ -213,7 +190,7 @@ namespace Spartan
 			auto file_path = file->ReadAs<string>();
 
 			// Load resource type
-			auto type = static_cast<Resource_Type>(file->ReadAs<uint32_t>());
+            const auto type = static_cast<Resource_Type>(file->ReadAs<uint32_t>());
 
 			switch (type)
 			{
@@ -232,11 +209,76 @@ namespace Spartan
 			case Resource_TextureCube:
 				Load<RHI_TextureCube>(file_path);
 				break;
+            case Resource_Audio:
+                Load<AudioClip>(file_path);
+                break;
 			}
 		}
 	}
 
-	uint32_t ResourceCache::GetResourceCount(const Resource_Type type)
+    uint64_t ResourceCache::GetMemoryUsageCpu(Resource_Type type /*= Resource_Unknown*/)
+    {
+        uint64_t size = 0;
+
+        if (type == Resource_Unknown)
+        {
+            for (const auto& group : m_resource_groups)
+            {
+                for (const auto& resource : group.second)
+                {
+                    if (Spartan_Object* object = dynamic_cast<Spartan_Object*>(resource.get()))
+                    {
+                        size += object->GetSizeCpu();
+                    }
+                }
+            }
+        }
+        else
+        {
+            for (const auto& resource : m_resource_groups[type])
+            {
+                if (Spartan_Object* object = dynamic_cast<Spartan_Object*>(resource.get()))
+                {
+                    size += object->GetSizeCpu();
+                }
+            }
+        }
+
+        return size;
+    }
+
+    uint64_t ResourceCache::GetMemoryUsageGpu(Resource_Type type /*= Resource_Unknown*/)
+    {
+        uint64_t size = 0;
+
+        if (type == Resource_Unknown)
+        {
+            for (const auto& group : m_resource_groups)
+            {
+                for (const auto& resource : group.second)
+                {
+                    if (RHI_Object* object = dynamic_cast<RHI_Object*>(resource.get()))
+                    {
+                        size += object->GetSizeGpu();
+                    }
+                }
+            }
+        }
+        else
+        {
+            for (const auto& resource : m_resource_groups[type])
+            {
+                if (RHI_Object* object = dynamic_cast<RHI_Object*>(resource.get()))
+                {
+                    size += object->GetSizeGpu();
+                }
+            }
+        }
+
+        return size;
+    }
+
+    uint32_t ResourceCache::GetResourceCount(const Resource_Type type)
 	{
 		return static_cast<uint32_t>(GetByType(type).size());
 	}
@@ -259,7 +301,7 @@ namespace Spartan
 
 	void ResourceCache::SetProjectDirectory(const string& directory)
 	{
-		if (!FileSystem::DirectoryExists(directory))
+		if (!FileSystem::Exists(directory))
 		{
 			FileSystem::CreateDirectory_(directory);
 		}
@@ -269,6 +311,6 @@ namespace Spartan
 
 	string ResourceCache::GetProjectDirectoryAbsolute() const
 	{
-		return FileSystem::GetWorkingDirectory() + m_project_directory;
+		return FileSystem::GetWorkingDirectory() + "/" + m_project_directory;
 	}
 }

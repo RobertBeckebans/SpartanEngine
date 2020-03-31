@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,29 +19,27 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ==================================
+//= INCLUDES ==============================
 #include "Widget_Properties.h"
-#include "Widget_World.h"
 #include "../ImGui_Extension.h"
 #include "../ButtonColorPicker.h"
 #include "../ImGui/Source/imgui_stdlib.h"
-#include "Rendering/Shaders/ShaderVariation.h"
+#include "Core/Engine.h"
+#include "Rendering/Model.h"
 #include "World/Entity.h"
 #include "World/Components/Transform.h"
 #include "World/Components/Renderable.h"
 #include "World/Components/RigidBody.h"
+#include "World/Components/SoftBody.h"
 #include "World/Components/Collider.h"
 #include "World/Components/Constraint.h"
 #include "World/Components/Light.h"
 #include "World/Components/AudioSource.h"
 #include "World/Components/AudioListener.h"
-#include "World/Components/Camera.h"
 #include "World/Components/Script.h"
 #include "World/Components/Environment.h"
-#include "Audio/AudioClip.h"
-#include "Core/Engine.h"
-#include "RHI/RHI_Texture2D.h"
-//=============================================
+#include "World/Components/Terrain.h"
+//=========================================
 
 //= NAMESPACES =========
 using namespace std;
@@ -62,11 +60,11 @@ namespace _Widget_Properties
 namespace ComponentProperty
 {
 	static string g_contex_menu_id;
-	static float g_column = 140.0f;
+	static float g_column = 180.0f;
 	static const float g_max_width = 100.0f;
-	static shared_ptr<IComponent> g_copied;
+	static IComponent* g_copied;
 
-	inline void ComponentContextMenu_Options(const string& id, const shared_ptr<IComponent>& component, const bool removable)
+	inline void ComponentContextMenu_Options(const string& id, IComponent* component, const bool removable)
 	{
 		if (ImGui::BeginPopup(id.c_str()))
 		{
@@ -101,7 +99,7 @@ namespace ComponentProperty
 		}
 	}
 
-	inline bool Begin(const string& name, const Icon_Type icon_enum, const shared_ptr<IComponent>& component_instance, bool options = true, const bool removable = true)
+	inline bool Begin(const string& name, const Icon_Type icon_enum, IComponent* component_instance, bool options = true, const bool removable = true)
 	{
 		// Collapsible contents
 		const auto collapsed = ImGui::CollapsingHeader(name.c_str(), ImGuiTreeNodeFlags_AllowItemOverlap | ImGuiTreeNodeFlags_DefaultOpen);
@@ -117,8 +115,9 @@ namespace ComponentProperty
 		// Component Options - Top right
 		if (options)
 		{
-			ImGui::SameLine(ImGui::GetWindowContentRegionWidth() * 0.973f); ImGui::SetCursorPosY(original_pen_y + 1.5f);
-			if (ImGuiEx::ImageButton(name.c_str(), Icon_Component_Options, 12))
+            const float icon_width = 16.0f;
+			ImGui::SameLine(ImGui::GetWindowContentRegionWidth() - icon_width + 1.0f); ImGui::SetCursorPosY(original_pen_y);
+			if (ImGuiEx::ImageButton(name.c_str(), Icon_Component_Options, icon_width))
 			{
 				g_contex_menu_id = name;
 				ImGui::OpenPopup(g_contex_menu_id.c_str());
@@ -148,8 +147,8 @@ Widget_Properties::Widget_Properties(Context* context) : Widget(context)
 	m_colorPicker_material	= make_unique<ButtonColorPicker>("Material Color Picker");
 	m_colorPicker_camera	= make_unique<ButtonColorPicker>("Camera Color Picker");
 
-	_Widget_Properties::resource_cache	= m_context->GetSubsystem<ResourceCache>().get();
-	_Widget_Properties::scene			= m_context->GetSubsystem<World>().get();  
+	_Widget_Properties::resource_cache	= m_context->GetSubsystem<ResourceCache>();
+	_Widget_Properties::scene			= m_context->GetSubsystem<World>();  
 }
 
 void Widget_Properties::Tick()
@@ -159,30 +158,23 @@ void Widget_Properties::Tick()
 	if (!m_inspected_entity.expired())
 	{
 		auto entity_ptr = m_inspected_entity.lock().get();
+        const auto renderable	= entity_ptr->GetComponent<Renderable>();
+        const auto material   = renderable ? renderable->GetMaterial() : nullptr;
 
-		auto& transform		    = entity_ptr->GetComponent<Transform>();
-		auto& light			    = entity_ptr->GetComponent<Light>();
-		auto& camera			= entity_ptr->GetComponent<Camera>();
-		auto& audio_source	    = entity_ptr->GetComponent<AudioSource>();
-		auto& audio_listener	= entity_ptr->GetComponent<AudioListener>();
-		auto& renderable		= entity_ptr->GetComponent<Renderable>();
-		auto& material		    = renderable ? renderable->GetMaterial() : shared_ptr<Material>();
-		auto& rigid_body		= entity_ptr->GetComponent<RigidBody>();
-		auto& collider		    = entity_ptr->GetComponent<Collider>();
-		auto& constraint		= entity_ptr->GetComponent<Constraint>();
-		auto& scripts		    = entity_ptr->GetComponents<Script>();
-
-		ShowTransform(transform);
-		ShowLight(light);
-		ShowCamera(camera);
-		ShowAudioSource(audio_source);
-		ShowAudioListener(audio_listener);
+		ShowTransform(entity_ptr->GetComponent<Transform>());
+		ShowLight(entity_ptr->GetComponent<Light>());
+		ShowCamera(entity_ptr->GetComponent<Camera>());
+        ShowTerrain(entity_ptr->GetComponent<Terrain>());
+        ShowEnvironment(entity_ptr->GetComponent<Environment>());
+		ShowAudioSource(entity_ptr->GetComponent<AudioSource>());
+		ShowAudioListener(entity_ptr->GetComponent<AudioListener>());
 		ShowRenderable(renderable);
-		ShowMaterial(material);
-		ShowRigidBody(rigid_body);
-		ShowCollider(collider);
-		ShowConstraint(constraint);
-		for (auto& script : scripts)
+		ShowMaterial(material.get());
+		ShowRigidBody(entity_ptr->GetComponent<RigidBody>());
+        ShowSoftBody(entity_ptr->GetComponent<SoftBody>());
+		ShowCollider(entity_ptr->GetComponent<Collider>());
+		ShowConstraint(entity_ptr->GetComponent<Constraint>());
+		for (auto& script : entity_ptr->GetComponents<Script>())
 		{
 			ShowScript(script);
 		}
@@ -192,7 +184,7 @@ void Widget_Properties::Tick()
 	}
 	else if (!m_inspected_material.expired())
 	{
-		ShowMaterial(m_inspected_material.lock());
+		ShowMaterial(m_inspected_material.lock().get());
 	}
 
 	ImGui::PopItemWidth();
@@ -204,7 +196,7 @@ void Widget_Properties::Inspect(const weak_ptr<Entity>& entity)
 
 	if (const auto shared_ptr = entity.lock())
 	{
-		_Widget_Properties::rotation_hint = shared_ptr->GetTransform_PtrRaw()->GetRotationLocal().ToEulerAngles();
+		_Widget_Properties::rotation_hint = shared_ptr->GetTransform()->GetRotationLocal().ToEulerAngles();
 	}
 	else
 	{
@@ -214,7 +206,7 @@ void Widget_Properties::Inspect(const weak_ptr<Entity>& entity)
 	// If we were previously inspecting a material, save the changes
 	if (!m_inspected_material.expired())
 	{
-		m_inspected_material.lock()->SaveToFile(m_inspected_material.lock()->GetResourceFilePath());
+		m_inspected_material.lock()->SaveToFile(m_inspected_material.lock()->GetResourceFilePathNative());
 	}
 	m_inspected_material.reset();
 }
@@ -225,51 +217,55 @@ void Widget_Properties::Inspect(const weak_ptr<Material>& material)
 	m_inspected_material = material;
 }
 
-void Widget_Properties::ShowTransform(shared_ptr<Transform>& transform) const
+void Widget_Properties::ShowTransform(Transform* transform) const
 {
 	if (ComponentProperty::Begin("Transform", Icon_Component_Transform, transform, true, false))
 	{
-		const auto is_playing = m_context->m_engine->EngineMode_IsSet(Engine_Game);
+        const bool is_playing = m_context->m_engine->EngineMode_IsSet(Engine_Game);
 
-		//= REFLECT ======================================================================================================
-		auto position	= transform->GetPositionLocal();
-		auto rotation	= !is_playing ? _Widget_Properties::rotation_hint : transform->GetRotationLocal().ToEulerAngles();
-		auto scale		= transform->GetScaleLocal();
-		//================================================================================================================
+		//= REFLECT ==========================================================================================================
+		Vector3 position	= transform->GetPositionLocal();
+		Vector3 rotation	= !is_playing ? _Widget_Properties::rotation_hint : transform->GetRotationLocal().ToEulerAngles();
+		Vector3 scale		= transform->GetScaleLocal();
+		//====================================================================================================================
 
-		const auto start_column = ComponentProperty::g_column - 70.0f;
-
-		const auto show_float = [](const char* id, const char* label, float* value) 
+		const auto show_float = [](const char* label, float* value) 
 		{
-			const auto step				= 1.0f;
-			const auto step_fast		= 1.0f;
-			char* decimals				= "%.4f";
-			const auto input_text_flags = ImGuiInputTextFlags_CharsDecimal;
+            const float label_float_spacing = 15.0f;
+            const float step                = 0.01f;
+            const string format                   = "%.4f";
 
-			ImGui::PushItemWidth(125.0f);
-			ImGui::PushID(id);
-			ImGui::InputFloat(label, value, step, step_fast, decimals, input_text_flags);
+            // Label
+            ImGui::TextUnformatted(label);
+            ImGui::SameLine(label_float_spacing);
+
+            // Float
+			ImGui::PushItemWidth(128.0f);
+			ImGui::PushID(static_cast<int>(ImGui::GetCursorPosX() + ImGui::GetCursorPosY()));
+            ImGui::DragFloat("##no_label", value, step, numeric_limits<float>::lowest(), numeric_limits<float>::max(), format.c_str());
 			ImGui::PopID();
 			ImGui::PopItemWidth();
 		};
 
-		// Position
-		ImGui::Text("Position");
-		ImGui::SameLine(start_column);	show_float("##trans_pos_x", "X", &position.x);
-		ImGui::SameLine();				show_float("##trans_pos_y", "Y", &position.y);
-		ImGui::SameLine();				show_float("##trans_pos_z", "Z", &position.z);
+        const auto show_vector = [&show_float](const char* label, Vector3& vector)
+        {
+            const float label_indetation = 15.0f;
 
-		// Rotation
-		ImGui::Text("Rotation");
-        ImGui::SameLine(start_column);	show_float("##trans_rot_x", "X", &rotation.x);
-        ImGui::SameLine();				show_float("##trans_rot_y", "Y", &rotation.y);
-        ImGui::SameLine();				show_float("##trans_rot_z", "Z", &rotation.z);
-
-		// Scale
-		ImGui::Text("Scale");
-        ImGui::SameLine(start_column);	show_float("##trans_sca_x", "X", &scale.x);
-        ImGui::SameLine();				show_float("##trans_sca_y", "Y", &scale.y);
-        ImGui::SameLine();				show_float("##trans_sca_z", "Z", &scale.z);
+            ImGui::BeginGroup();
+            ImGui::Indent(label_indetation);
+            ImGui::TextUnformatted(label);
+            ImGui::Unindent(label_indetation);
+            show_float("X", &vector.x);
+            show_float("Y", &vector.y);
+            show_float("Z", &vector.z);
+            ImGui::EndGroup();
+        };
+       
+        show_vector("Position", position);
+        ImGui::SameLine();
+        show_vector("Rotation", rotation);
+        ImGui::SameLine();
+        show_vector("Scale", scale);   
         
 		//= MAP ===================================================================
 		if (!is_playing)
@@ -288,7 +284,7 @@ void Widget_Properties::ShowTransform(shared_ptr<Transform>& transform) const
 	ComponentProperty::End();
 }
 
-void Widget_Properties::ShowLight(shared_ptr<Light>& light) const
+void Widget_Properties::ShowLight(Light* light) const
 {
 	if (!light)
 		return;
@@ -300,7 +296,10 @@ void Widget_Properties::ShowLight(shared_ptr<Light>& light) const
 		const char* type_char_ptr	= types[static_cast<int>(light->GetLightType())];
 		auto intensity				= light->GetIntensity();
 		auto angle					= light->GetAngle() * 179.0f;
-		auto casts_shadows			= light->GetCastShadows();
+		auto shadows			    = light->GetShadowsEnabled();
+        auto shadows_screen_space   = light->GetShadowsScreenSpaceEnabled();
+        auto shadows_transparent    = light->GetShadowsTransparentEnabled();
+        auto volumetric             = light->GetVolumetricEnabled();
 		auto bias					= light->GetBias();
 		auto normal_bias			= light->GetNormalBias();
 		auto range					= light->GetRange();
@@ -338,23 +337,37 @@ void Widget_Properties::ShowLight(shared_ptr<Light>& light) const
 		ImGui::SameLine(ComponentProperty::g_column);
 		ImGui::PushItemWidth(300); ImGui::DragFloat("##lightIntensity", &intensity, 0.01f, 0.0f, 100.0f); ImGui::PopItemWidth();
 
-		// Cast shadows
+		// Shadows
 		ImGui::Text("Shadows");
-		ImGui::SameLine(ComponentProperty::g_column); ImGui::Checkbox("##lightShadows", &casts_shadows);
+		ImGui::SameLine(ComponentProperty::g_column); ImGui::Checkbox("##light_shadows", &shadows);
 
-		// Cascade splits
-		if (light->GetLightType() == LightType_Directional)
-		{
-			// Bias
-			ImGui::Text("Bias");
-			ImGui::SameLine(ComponentProperty::g_column);
-			ImGui::PushItemWidth(300); ImGui::InputFloat("##lightBias", &bias, 0.01f, 0.01f, "%.4f"); ImGui::PopItemWidth();
+        // Screen space shadows
+        ImGui::Text("Screen Space Shadows");
+        ImGui::SameLine(ComponentProperty::g_column); ImGui::Checkbox("##light_shadows_screen_space", &shadows_screen_space);
+        ImGuiEx::Tooltip("Small scale shadows which add detail were surfaces meet, also known as contact shadows");
 
-			// Normal Bias
-			ImGui::Text("Normal Bias");
-			ImGui::SameLine(ComponentProperty::g_column);
-			ImGui::PushItemWidth(300); ImGui::InputFloat("##lightNormalBias", &normal_bias, 1.0f, 1.0f, "%.0f"); ImGui::PopItemWidth();
-		}
+        if (shadows)
+        {
+            // Transparent shadows
+            ImGui::Text("Transparent Shadows");
+            ImGui::SameLine(ComponentProperty::g_column); ImGui::Checkbox("##light_shadows_transparent", &shadows_transparent);
+            ImGuiEx::Tooltip("Allows transparent objects to cast colored translucent shadows");
+
+            // Volumetric
+            ImGui::Text("Volumetric");
+            ImGui::SameLine(ComponentProperty::g_column); ImGui::Checkbox("##light_volumetric", &volumetric);
+            ImGuiEx::Tooltip("The shadow map is used to determine which parts of the \"air\" should be lit");
+        }
+
+		// Bias
+		ImGui::Text("Bias");
+		ImGui::SameLine(ComponentProperty::g_column);
+		ImGui::PushItemWidth(300); ImGui::InputFloat("##lightBias", &bias, 0.00001f, 0.00001f, "%.5f"); ImGui::PopItemWidth();
+
+		// Normal Bias
+		ImGui::Text("Normal Bias");
+		ImGui::SameLine(ComponentProperty::g_column);
+		ImGui::PushItemWidth(300); ImGui::InputFloat("##lightNormalBias", &normal_bias, 1.0f, 1.0f, "%.0f"); ImGui::PopItemWidth();
 
 		// Range
 		if (light->GetLightType() != LightType_Directional)
@@ -372,20 +385,23 @@ void Widget_Properties::ShowLight(shared_ptr<Light>& light) const
 			ImGui::PushItemWidth(300); ImGui::DragFloat("##lightAngle", &angle, 0.01f, 1.0f, 179.0f); ImGui::PopItemWidth();
 		}
 
-		//= MAP =====================================================================================================
-		if (intensity != light->GetIntensity())						light->SetIntensity(intensity);
-		if (casts_shadows != light->GetCastShadows())				light->SetCastShadows(casts_shadows);
-		if (bias != light->GetBias())								light->SetBias(bias);
-		if (normal_bias != light->GetNormalBias())					light->SetNormalBias(normal_bias);
-		if (angle / 179.0f != light->GetAngle())					light->SetAngle(angle / 179.0f);
-		if (range != light->GetRange())								light->SetRange(range);
-		if (m_colorPicker_light->GetColor() != light->GetColor())	light->SetColor(m_colorPicker_light->GetColor());
-		//===========================================================================================================
+		//= MAP ======================================================================================================================
+        if (intensity != light->GetIntensity())						        light->SetIntensity(intensity);
+        if (shadows != light->GetShadowsEnabled())				            light->SetShadowsEnabled(shadows);
+        if (shadows_screen_space != light->GetShadowsScreenSpaceEnabled())  light->SetShadowsScreenSpaceEnabled(shadows_screen_space);
+        if (shadows_transparent != light->GetShadowsTransparentEnabled())   light->SetShadowsTransparentEnabled(shadows_transparent);
+        if (volumetric != light->GetVolumetricEnabled())				    light->SetVolumetricEnabled(volumetric);
+		if (bias != light->GetBias())								        light->SetBias(bias);
+		if (normal_bias != light->GetNormalBias())					        light->SetNormalBias(normal_bias);
+		if (angle / 179.0f != light->GetAngle())					        light->SetAngle(angle / 179.0f);
+		if (range != light->GetRange())								        light->SetRange(range);
+		if (m_colorPicker_light->GetColor() != light->GetColor())	        light->SetColor(m_colorPicker_light->GetColor());
+		//============================================================================================================================
 	}
 	ComponentProperty::End();
 }
 
-void Widget_Properties::ShowRenderable(shared_ptr<Renderable>& renderable) const
+void Widget_Properties::ShowRenderable(Renderable* renderable) const
 {
 	if (!renderable)
 		return;
@@ -404,8 +420,17 @@ void Widget_Properties::ShowRenderable(shared_ptr<Renderable>& renderable) const
 		ImGui::SameLine(ComponentProperty::g_column); ImGui::Text(mesh_name.c_str());
 
 		// Material
-		ImGui::Text("Material");
-		ImGui::SameLine(ComponentProperty::g_column); ImGui::Text(material_name.c_str());
+        ImGui::Text("Material");
+        ImGui::SameLine(ComponentProperty::g_column);
+        ImGui::PushID("##material_name");
+        ImGui::PushItemWidth(200.0f);
+        ImGui::InputText("", &material_name, ImGuiInputTextFlags_AutoSelectAll | ImGuiInputTextFlags_ReadOnly);
+        if (auto payload = ImGuiEx::ReceiveDragPayload(ImGuiEx::DragPayload_Material))
+        {
+            renderable->SetMaterial(std::get<const char*>(payload->data));
+        }
+        ImGui::PopItemWidth();
+        ImGui::PopID();
 
 		// Cast shadows
 		ImGui::Text("Cast Shadows");
@@ -423,7 +448,7 @@ void Widget_Properties::ShowRenderable(shared_ptr<Renderable>& renderable) const
 	ComponentProperty::End();
 }
 
-void Widget_Properties::ShowRigidBody(shared_ptr<RigidBody>& rigid_body) const
+void Widget_Properties::ShowRigidBody(RigidBody* rigid_body) const
 {
 	if (!rigid_body)
 		return;
@@ -511,7 +536,23 @@ void Widget_Properties::ShowRigidBody(shared_ptr<RigidBody>& rigid_body) const
 	ComponentProperty::End();
 }
 
-void Widget_Properties::ShowCollider(shared_ptr<Collider>& collider) const
+void Widget_Properties::ShowSoftBody(SoftBody* soft_body) const
+{
+    if (!soft_body)
+        return;
+
+    if (ComponentProperty::Begin("SoftBody", Icon_Component_SoftBody, soft_body))
+    {
+        //= REFLECT ===============================================================
+        //=========================================================================
+
+        //= MAP ===================================================================
+        //=========================================================================
+    }
+    ComponentProperty::End();
+}
+
+void Widget_Properties::ShowCollider(Collider* collider) const
 {
 	if (!collider)
 		return;
@@ -519,7 +560,7 @@ void Widget_Properties::ShowCollider(shared_ptr<Collider>& collider) const
 	if (ComponentProperty::Begin("Collider", Icon_Component_Collider, collider))
 	{
 		//= REFLECT =======================================================================
-		static vector<char*> type = {
+		static vector<string> type = {
 			"Box",
 			"Sphere",
 			"Static Plane",
@@ -528,7 +569,7 @@ void Widget_Properties::ShowCollider(shared_ptr<Collider>& collider) const
 			"Cone",
 			"Mesh"
 		};
-		const char* shape_char_ptr		= type[static_cast<int>(collider->GetShapeType())];
+		const char* shape_char_ptr		= type[static_cast<int>(collider->GetShapeType())].c_str();
 		bool optimize					= collider->GetOptimize();
 		Vector3 collider_center			= collider->GetCenter();
 		Vector3 collider_bounding_box	= collider->GetBoundingBox();
@@ -547,9 +588,9 @@ void Widget_Properties::ShowCollider(shared_ptr<Collider>& collider) const
 			for (unsigned int i = 0; i < static_cast<unsigned int>(type.size()); i++)
 			{
 				const auto is_selected = (shape_char_ptr == type[i]);
-				if (ImGui::Selectable(type[i], is_selected))
+				if (ImGui::Selectable(type[i].c_str(), is_selected))
 				{
-					shape_char_ptr = type[i];
+					shape_char_ptr = type[i].c_str();
 					collider->SetShapeType(static_cast<ColliderShape>(i));
 				}
 				if (is_selected)
@@ -589,7 +630,7 @@ void Widget_Properties::ShowCollider(shared_ptr<Collider>& collider) const
 	ComponentProperty::End();
 }
 
-void Widget_Properties::ShowConstraint(shared_ptr<Constraint>& constraint) const
+void Widget_Properties::ShowConstraint(Constraint* constraint) const
 {
 	if (!constraint)
 		return;
@@ -608,9 +649,9 @@ void Widget_Properties::ShowConstraint(shared_ptr<Constraint>& constraint) const
 		string other_body_name	= other_body.expired() ? "N/A" : other_body.lock()->GetName();
 		//======================================================================================
 
-		auto inputTextFlags		= ImGuiInputTextFlags_CharsDecimal;
-		float step				= 0.1f;
-		float step_fast			= 0.1f;
+        const auto inputTextFlags		= ImGuiInputTextFlags_CharsDecimal;
+        const float step				= 0.1f;
+        const float step_fast			= 0.1f;
 		const char* precision	= "%.3f";
 
 		// Type
@@ -637,8 +678,8 @@ void Widget_Properties::ShowConstraint(shared_ptr<Constraint>& constraint) const
 		ImGui::Text("Other Body"); ImGui::SameLine(ComponentProperty::g_column);
 		ImGui::PushID("##OtherBodyName");
 		ImGui::PushItemWidth(200.0f);
-		ImGui::InputText("", &other_body_name, ImGuiInputTextFlags_ReadOnly);
-		if (auto payload = ImGuiEx::ReceiveDragPayload(ImGuiEx::DragPayload_entity))
+		ImGui::InputText("", &other_body_name, ImGuiInputTextFlags_AutoSelectAll | ImGuiInputTextFlags_ReadOnly);
+		if (auto payload = ImGuiEx::ReceiveDragPayload(ImGuiEx::DragPayload_Entity))
 		{
 			const auto entity_id	= get<unsigned int>(payload->data);
 			other_body				= _Widget_Properties::scene->EntityGetById(entity_id);
@@ -696,112 +737,79 @@ void Widget_Properties::ShowConstraint(shared_ptr<Constraint>& constraint) const
 	ComponentProperty::End();
 }
 
-void Widget_Properties::ShowMaterial(shared_ptr<Material>& material) const
+void Widget_Properties::ShowMaterial(Material* material) const
 {
 	if (!material)
 		return;
 
 	if (ComponentProperty::Begin("Material", Icon_Component_Material, nullptr, false))
 	{
+        const float offset_from_pos_x = 100;
+
 		//= REFLECT =================================================
 		auto tiling	= material->GetTiling();
 		auto offset	= material->GetOffset();
 		m_colorPicker_material->SetColor(material->GetColorAlbedo());
 		//===========================================================
 
-		static const auto material_text_size = ImVec2(80, 80);
-
-		const auto tex_albedo		= material->GetTexture(TextureType_Albedo).get();
-		const auto tex_roughness	= material->GetTexture(TextureType_Roughness).get();
-		const auto tex_metallic		= material->GetTexture(TextureType_Metallic).get();
-		const auto tex_normal		= material->GetTexture(TextureType_Normal).get();
-		const auto tex_height		= material->GetTexture(TextureType_Height).get();
-		const auto tex_occlusion	= material->GetTexture(TextureType_Occlusion).get();
-		const auto tex_emission		= material->GetTexture(TextureType_Emission).get();
-		const auto tex_mask			= material->GetTexture(TextureType_Mask).get();
-
 		// Name
 		ImGui::Text("Name");
-		ImGui::SameLine(ComponentProperty::g_column); ImGui::Text(material->GetResourceName().c_str());
+		ImGui::SameLine(offset_from_pos_x); ImGui::Text(material->GetResourceName().c_str());
 
 		if (material->IsEditable())
 		{
-			const auto display_texture_slot = [&material](RHI_Texture* texture, const char* texture_name, const TextureType textureType)
-			{
-				// Texture
-				ImGui::Text(texture_name);
-				ImGui::SameLine(ComponentProperty::g_column); 
-				ImGuiEx::Image
-				(
-					texture,
-					material_text_size,
-					ImColor(255, 255, 255, 255),
-					ImColor(255, 255, 255, 128)
-				);
+            // Texture slots
+            {
+                const auto texture_slot = [&offset_from_pos_x, &material](const char* texture_name, const TextureType texture_type, bool enable_drag_float)
+                {
+                    ImGuiEx::ImageSlot(
+                        texture_name,
+                        material->GetTexture_PtrShared(texture_type),
+                        [&material, &texture_type](const shared_ptr<RHI_Texture>& texture)  { material->SetTextureSlot(texture_type, texture); },
+                        offset_from_pos_x
+                    );
 
-				// Drop target
-				if (auto payload = ImGuiEx::ReceiveDragPayload(ImGuiEx::DragPayload_Texture))
-				{
-					try
-					{
-						if (const auto tex = _Widget_Properties::resource_cache->Load<RHI_Texture2D>(get<const char*>(payload->data)))
-						{
-							material->SetTextureSlot(textureType, tex);
-						}
-					}
-					catch (const bad_variant_access& e) { LOGF_ERROR("Widget_Properties::ShowMaterial: %s", e.what()); }
-				}
+                    if (enable_drag_float)
+                    {
+                        ImGui::SameLine();
+                        ImGui::PushID(static_cast<int>(ImGui::GetCursorPosX() + ImGui::GetCursorPosY()));
+                        ImGui::DragFloat("", &material->GetMultiplier(texture_type), 0.004f, 0.0f, 1.0f);
+                        ImGui::PopID();
+                    }
+                };
 
-				// Remove texture button
-				if (material->HasTexture(textureType))
-				{
-					const auto size = 15.0f;
-					ImGui::SameLine(); ImGui::SetCursorPosX(ImGui::GetCursorPosX() - size * 2.0f);
-					if (ImGuiEx::ImageButton(texture_name, Icon_Component_Material_RemoveTexture, size))
-					{
-						material->SetTextureSlot(textureType, shared_ptr<RHI_Texture>());
-					}
-				}
-			};
+                texture_slot("Albedo",      TextureType_Albedo,     false); ImGui::SameLine(); m_colorPicker_material->Update();
+                texture_slot("Roughness",   TextureType_Roughness,  true);
+                texture_slot("Metallic",    TextureType_Metallic,   true);
+                texture_slot("Normal",      TextureType_Normal,     true);
+                texture_slot("Height",      TextureType_Height,     true);
+                texture_slot("Occlusion",   TextureType_Occlusion,  false);
+                texture_slot("Emission",    TextureType_Emission,   false);
+                texture_slot("Mask",        TextureType_Mask,       false);
+            }
 
-			// Albedo
-			display_texture_slot(tex_albedo, "Albedo", TextureType_Albedo);
-			ImGui::SameLine(); m_colorPicker_material->Update();
+            // UV
+            {
+                const float input_width = 128.0f;
 
-			// Roughness
-			display_texture_slot(tex_roughness, "Roughness", TextureType_Roughness);
-			ImGui::SameLine(); ImGui::DragFloat("##matRoughness", &material->GetMultiplier(TextureType_Roughness), 0.004f, 0.0f, 1.0f);
+                // Tiling
+                ImGui::Text("Tiling");
+                ImGui::SameLine(offset_from_pos_x); ImGui::Text("X");
+                ImGui::PushItemWidth(input_width);
+                ImGui::SameLine(); ImGui::InputFloat("##matTilingX", &tiling.x, 0.01f, 0.1f, "%.2f", ImGuiInputTextFlags_CharsDecimal);
+                ImGui::SameLine(); ImGui::Text("Y");
+                ImGui::SameLine(); ImGui::InputFloat("##matTilingY", &tiling.y, 0.01f, 0.1f, "%.2f", ImGuiInputTextFlags_CharsDecimal);
+                ImGui::PopItemWidth();
 
-			// Metallic
-			display_texture_slot(tex_metallic, "Metallic", TextureType_Metallic);
-			ImGui::SameLine(); ImGui::DragFloat("##matMetallic", &material->GetMultiplier(TextureType_Metallic), 0.004f, 0.0f, 1.0f);
-
-			// Normal
-			display_texture_slot(tex_normal, "Normal", TextureType_Normal);
-			ImGui::SameLine(); ImGui::DragFloat("##matNormal", &material->GetMultiplier(TextureType_Normal), 0.004f, 0.0f, 1.0f);
-
-			// Height
-			display_texture_slot(tex_height, "Height", TextureType_Height);
-			ImGui::SameLine(); ImGui::DragFloat("##matHeight", &material->GetMultiplier(TextureType_Height), 0.004f, 0.0f, 1.0f);
-
-			// Occlusion
-			display_texture_slot(tex_occlusion, "Occlusion", TextureType_Occlusion);
-
-			// Emission
-			display_texture_slot(tex_emission, "Emission", TextureType_Emission);
-
-			// Mask
-			display_texture_slot(tex_mask, "Mask", TextureType_Mask);
-
-			// Tiling
-			ImGui::Text("Tiling");
-			ImGui::SameLine(ComponentProperty::g_column); ImGui::Text("X"); ImGui::SameLine(); ImGui::InputFloat("##matTilingX", &tiling.x, ImGuiInputTextFlags_CharsDecimal);
-			ImGui::SameLine(); ImGui::Text("Y"); ImGui::SameLine(); ImGui::InputFloat("##matTilingY", &tiling.y, ImGuiInputTextFlags_CharsDecimal);
-
-			// Offset
-			ImGui::Text("Offset");
-			ImGui::SameLine(ComponentProperty::g_column); ImGui::Text("X"); ImGui::SameLine(); ImGui::InputFloat("##matOffsetX", &offset.x, ImGuiInputTextFlags_CharsDecimal);
-			ImGui::SameLine(); ImGui::Text("Y"); ImGui::SameLine(); ImGui::InputFloat("##matOffsetY", &offset.y, ImGuiInputTextFlags_CharsDecimal);
+                // Offset
+                ImGui::Text("Offset");
+                ImGui::SameLine(offset_from_pos_x); ImGui::Text("X");
+                ImGui::PushItemWidth(input_width);
+                ImGui::SameLine(); ImGui::InputFloat("##matOffsetX", &offset.x, 0.01f, 0.1f, "%.2f", ImGuiInputTextFlags_CharsDecimal);
+                ImGui::SameLine(); ImGui::Text("Y");
+                ImGui::SameLine(); ImGui::InputFloat("##matOffsetY", &offset.y, 0.01f, 0.1f, "%.2f", ImGuiInputTextFlags_CharsDecimal);
+                ImGui::PopItemWidth();
+            }
 		}
 
 		//= MAP =============================================================================================================================
@@ -813,7 +821,7 @@ void Widget_Properties::ShowMaterial(shared_ptr<Material>& material) const
 	ComponentProperty::End();
 }
 
-void Widget_Properties::ShowCamera(shared_ptr<Camera>& camera) const
+void Widget_Properties::ShowCamera(Camera* camera) const
 {
 	if (!camera)
 		return;
@@ -876,7 +884,79 @@ void Widget_Properties::ShowCamera(shared_ptr<Camera>& camera) const
 	ComponentProperty::End();
 }
 
-void Widget_Properties::ShowAudioSource(shared_ptr<AudioSource>& audio_source) const
+void Widget_Properties::ShowEnvironment(Environment* environment) const
+{
+    if (!environment)
+        return;
+
+    if (ComponentProperty::Begin("Environment", Icon_Component_Environment, environment))
+    {
+        ImGuiEx::ImageSlot(
+            "Sphere Map",
+            environment->GetTexture(),
+            [&environment](const shared_ptr<RHI_Texture>& texture) { environment->SetTexture(texture); }
+        );
+    }
+    ComponentProperty::End();
+}
+
+void Widget_Properties::ShowTerrain(Terrain* terrain) const
+{
+    if (!terrain)
+        return;
+
+    if (ComponentProperty::Begin("Terrain", Icon_Component_Terrain, terrain))
+    {
+        //= REFLECT =================================
+        float min_y         = terrain->GetMinY();
+        float max_y         = terrain->GetMaxY();
+        const float progress      = terrain->GetProgress();
+        //===========================================
+
+        const float cursor_y = ImGui::GetCursorPosY();
+
+        ImGui::BeginGroup();
+        {
+            ImGuiEx::ImageSlot(
+                "Height Map",
+                terrain->GetHeightMap(),
+                [&terrain](const shared_ptr<RHI_Texture>& texture) { terrain->SetHeightMap(static_pointer_cast<RHI_Texture2D>(texture)); },
+                0.0f,   // offset_from_start_x
+                true    // label_align_vertically
+            );
+
+            if (ImGui::Button("Generate", ImVec2(82, 0)))
+            {
+                terrain->GenerateAsync();
+            }
+        }
+        ImGui::EndGroup();
+
+        ImGui::SameLine();
+        ImGui::SetCursorPosY(cursor_y);
+        ImGui::BeginGroup();
+        {
+            ImGui::InputFloat("Min Y", &min_y);
+            ImGui::InputFloat("Max Y", &max_y);
+
+            if (progress > 0.0f && progress < 1.0f)
+            {
+                ImGui::ProgressBar(progress, ImVec2(0.0f, 0.0f));
+                ImGui::SameLine();
+                ImGui::Text(terrain->GetProgressDescription().c_str());
+            }
+        }
+        ImGui::EndGroup();
+
+        //= MAP =================================================
+        if (min_y != terrain->GetMinY()) terrain->SetMinY(min_y);
+        if (max_y != terrain->GetMaxY()) terrain->SetMaxY(max_y);
+        //=======================================================
+    }
+    ComponentProperty::End();
+}
+
+void Widget_Properties::ShowAudioSource(AudioSource* audio_source) const
 {
 	if (!audio_source)
 		return;
@@ -901,9 +981,7 @@ void Widget_Properties::ShowAudioSource(shared_ptr<AudioSource>& audio_source) c
 		ImGui::PopItemWidth();
 		if (auto payload = ImGuiEx::ReceiveDragPayload(ImGuiEx::DragPayload_Audio))
 		{
-			audio_clip_name			= FileSystem::GetFileNameFromFilePath(get<const char*>(payload->data));
-			const auto audio_clip	= _Widget_Properties::resource_cache->Load<AudioClip>(get<const char*>(payload->data));
-			audio_source->SetAudioClip(audio_clip);
+			audio_source->SetAudioClip(std::get<const char*>(payload->data));
 		}
 
 		// Mute
@@ -947,7 +1025,7 @@ void Widget_Properties::ShowAudioSource(shared_ptr<AudioSource>& audio_source) c
 	ComponentProperty::End();
 }
 
-void Widget_Properties::ShowAudioListener(shared_ptr<AudioListener>& audio_listener) const
+void Widget_Properties::ShowAudioListener(AudioListener* audio_listener) const
 {
 	if (!audio_listener)
 		return;
@@ -959,7 +1037,7 @@ void Widget_Properties::ShowAudioListener(shared_ptr<AudioListener>& audio_liste
 	ComponentProperty::End();
 }
 
-void Widget_Properties::ShowScript(shared_ptr<Script>& script) const
+void Widget_Properties::ShowScript(Script* script) const
 {
 	if (!script)
 		return;
@@ -1030,6 +1108,10 @@ void Widget_Properties::ComponentContextMenu_Add() const
 				{
 					entity->AddComponent<RigidBody>();
 				}
+                else if (ImGui::MenuItem("Soft Body"))
+                {
+                    entity->AddComponent<SoftBody>();
+                }
 				else if (ImGui::MenuItem("Collider"))
 				{
 					entity->AddComponent<Collider>();
@@ -1062,11 +1144,17 @@ void Widget_Properties::ComponentContextMenu_Add() const
 			{
 				if (ImGui::MenuItem("Environment"))
 				{
-					entity->AddComponent<Environment>();
+					entity->AddComponent<Environment>()->LoadDefault();
 				}
 
 				ImGui::EndMenu();
 			}
+
+            // TERRAIN
+            if (ImGui::MenuItem("Terrain"))
+            {
+                entity->AddComponent<Terrain>();
+            }
 		}
 
 		ImGui::EndPopup();

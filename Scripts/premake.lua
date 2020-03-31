@@ -17,16 +17,31 @@
 -- IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 -- CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-SOLUTION_NAME 		= "Spartan"
-EDITOR_NAME 		= "Editor"
-RUNTIME_NAME 		= "Runtime"
+
+SOLUTION_NAME		= "Spartan"
+EDITOR_NAME			= "Editor"
+RUNTIME_NAME		= "Runtime"
+TARGET_NAME			= "Spartan" -- Name of executable
+DEBUG_FORMAT		= "c7"
 EDITOR_DIR			= "../" .. EDITOR_NAME
 RUNTIME_DIR			= "../" .. RUNTIME_NAME
-LIBRARY_DIR 		= "../ThirdParty/libraries"
-DEBUG_FORMAT		= "c7"
-TARGET_DIR_RELEASE 	= "../Binaries/Release"
-TARGET_DIR_DEBUG 	= "../Binaries/Debug"
-INTERMEDIATE_DIR 	= "../Binaries/Intermediate"
+LIBRARY_DIR			= "../ThirdParty/libraries"
+INTERMEDIATE_DIR	= "../Binaries/Intermediate"
+TARGET_DIR_RELEASE  = "../Binaries/Release"
+TARGET_DIR_DEBUG    = "../Binaries/Debug"
+API_GRAPHICS		= _ARGS[1]
+
+-- Convert graphics api var to the corresponding project define
+if API_GRAPHICS == "d3d11" then
+	API_GRAPHICS	= "API_GRAPHICS_D3D11"
+	TARGET_NAME		= "Spartan_d3d11"
+elseif API_GRAPHICS == "d3d12" then
+	API_GRAPHICS	= "API_GRAPHICS_D3D12"
+	TARGET_NAME		= "Spartan_d3d12"
+elseif API_GRAPHICS == "vulkan" then
+	API_GRAPHICS	= "API_GRAPHICS_VULKAN"
+	TARGET_NAME		= "Spartan_vk"
+end
 
 -- Solution
 solution (SOLUTION_NAME)
@@ -48,13 +63,13 @@ solution (SOLUTION_NAME)
 		system "Windows"
 		architecture "x64"
 		
-	-- 	"Debug"
+	--	"Debug"
 	filter "configurations:Debug"
 		defines { "DEBUG" }
 		flags { "MultiProcessorCompile", "LinkTimeOptimization" }
 		symbols "On"			
 		
-	-- 	"Release"	
+	--	"Release"	
 	filter "configurations:Release"
 		defines { "NDEBUG" }
 		flags { "MultiProcessorCompile" }
@@ -67,7 +82,7 @@ project (RUNTIME_NAME)
 	objdir (INTERMEDIATE_DIR)
 	kind "StaticLib"
 	staticruntime "On"
-	defines{ "SPARTAN_RUNTIME" }
+	defines{ "SPARTAN_RUNTIME", API_GRAPHICS }
 	
 	-- Files
 	files 
@@ -80,20 +95,20 @@ project (RUNTIME_NAME)
 
 	-- Includes
 	includedirs { "../ThirdParty/DirectXShaderCompiler" }
-	includedirs { "../ThirdParty/SPIRV-Cross" }
-	includedirs { "../ThirdParty/Vulkan_1.1.114.0" }
+	includedirs { "../ThirdParty/SPIRV-Cross_2020-01-16" }
+	includedirs { "../ThirdParty/Vulkan_1.2.131.2" }
 	includedirs { "../ThirdParty/AngelScript_2.33.0" }
 	includedirs { "../ThirdParty/Assimp_5.0.0" }
-	includedirs { "../ThirdParty/Bullet_2.88" }
+	includedirs { "../ThirdParty/Bullet_2.89" }
 	includedirs { "../ThirdParty/FMOD_1.10.10" }
 	includedirs { "../ThirdParty/FreeImage_3.18.0" }
 	includedirs { "../ThirdParty/FreeType_2.10.0" }
-	includedirs { "../ThirdParty/pugixml_1.9" }
+	includedirs { "../ThirdParty/pugixml_1.10" }
 	
 	-- Libraries
 	libdirs (LIBRARY_DIR)
 
-	-- 	"Debug"
+	--	"Debug"
 	filter "configurations:Debug"
 		targetdir (TARGET_DIR_DEBUG)
 		debugdir (TARGET_DIR_DEBUG)
@@ -108,7 +123,7 @@ project (RUNTIME_NAME)
 		links { "pugixml_debug" }
 		links { "IrrXML_debug" }
 			
-	-- 	"Release"
+	--	"Release"
 	filter "configurations:Release"
 		targetdir (TARGET_DIR_RELEASE)
 		debugdir (TARGET_DIR_RELEASE)
@@ -127,10 +142,11 @@ project (EDITOR_NAME)
 	location (EDITOR_DIR)
 	links { RUNTIME_NAME }
 	dependson { RUNTIME_NAME }
+	targetname ( TARGET_NAME )
 	objdir (INTERMEDIATE_DIR)
 	kind "WindowedApp"
 	staticruntime "On"
-	defines{ "SPARTAN_EDITOR" }
+	defines{ "SPARTAN_EDITOR", API_GRAPHICS }
 	
 	-- Files
 	files 

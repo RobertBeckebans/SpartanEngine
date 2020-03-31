@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -82,7 +82,7 @@ namespace Spartan
             {
                 if (!subsystem.ptr->Initialize())
                 {
-                	LOGF_ERROR("Failed to initialize %s", typeid(*subsystem.ptr).name());
+                	LOG_ERROR("Failed to initialize %s", typeid(*subsystem.ptr).name());
                 	result = false;
                 }
             }
@@ -104,14 +104,14 @@ namespace Spartan
 
 		// Get a subsystem
 		template <class T> 
-		std::shared_ptr<T> GetSubsystem()
+        T* GetSubsystem()
 		{
             validate_subsystem_type<T>();
 
 			for (const auto& subsystem : m_subsystems)
 			{
                 if (typeid(T) == typeid(*subsystem.ptr))
-                    return std::static_pointer_cast<T>(subsystem.ptr);
+                    return static_cast<T*>(subsystem.ptr.get());
 			}
 
 			return nullptr;

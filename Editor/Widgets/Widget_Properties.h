@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,10 +21,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ======
+//= INCLUDES ====================
 #include "Widget.h"
 #include <memory>
-//=================
+#include "..\ButtonColorPicker.h"
+//===============================
 
 namespace Spartan
 {
@@ -33,6 +34,7 @@ namespace Spartan
 	class Light;
 	class Renderable;
 	class RigidBody;
+    class SoftBody;
 	class Collider;
 	class Constraint;
 	class Material;
@@ -40,10 +42,10 @@ namespace Spartan
 	class AudioSource;
 	class AudioListener;
 	class Script;
+    class Terrain;
+    class Environment;
 	class IComponent;
 }
-
-class ButtonColorPicker;
 
 class Widget_Properties : public Widget
 {
@@ -59,17 +61,20 @@ public:
 	static std::weak_ptr<Spartan::Material> m_inspected_material;
 
 private:
-	void ShowTransform(std::shared_ptr<Spartan::Transform>& transform) const;
-	void ShowLight(std::shared_ptr<Spartan::Light>& light) const;
-	void ShowRenderable(std::shared_ptr<Spartan::Renderable>& renderable) const;
-	void ShowRigidBody(std::shared_ptr<Spartan::RigidBody>& rigid_body) const;
-	void ShowCollider(std::shared_ptr<Spartan::Collider>& collider) const;
-	void ShowConstraint(std::shared_ptr<Spartan::Constraint>& constraint) const;
-	void ShowMaterial(std::shared_ptr<Spartan::Material>& material) const;
-	void ShowCamera(std::shared_ptr<Spartan::Camera>& camera) const;
-	void ShowAudioSource(std::shared_ptr<Spartan::AudioSource>& audio_source) const;
-	void ShowAudioListener(std::shared_ptr<Spartan::AudioListener>& audio_listener) const;
-	void ShowScript(std::shared_ptr<Spartan::Script>& script) const;
+	void ShowTransform(Spartan::Transform* transform) const;
+	void ShowLight(Spartan::Light* light) const;
+	void ShowRenderable(Spartan::Renderable* renderable) const;
+	void ShowRigidBody(Spartan::RigidBody* rigid_body) const;
+    void ShowSoftBody(Spartan::SoftBody* soft_body) const;
+	void ShowCollider(Spartan::Collider* collider) const;
+	void ShowConstraint(Spartan::Constraint* constraint) const;
+	void ShowMaterial(Spartan::Material* material) const;
+	void ShowCamera(Spartan::Camera* camera) const;
+    void ShowEnvironment(Spartan::Environment* environment) const;
+    void ShowTerrain(Spartan::Terrain* terrain) const;
+	void ShowAudioSource(Spartan::AudioSource* audio_source) const;
+	void ShowAudioListener(Spartan::AudioListener* audio_listener) const;
+	void ShowScript(Spartan::Script* script) const;
 
 	void ShowAddComponentButton() const;
 	void ComponentContextMenu_Add() const;

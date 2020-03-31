@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -70,28 +70,29 @@ namespace Spartan
 			const Math::BoundingBox& aabb, 
 			Model* model
 		);
+        void GeometryClear();
+        void GeometrySet(Geometry_Type type);
 		void GeometryGet(std::vector<uint32_t>* indices, std::vector<RHI_Vertex_PosTexNorTan>* vertices) const;
-		void GeometrySet(Geometry_Type type);
-		auto GeometryIndexOffset()	const { return m_geometryIndexOffset; }
-		auto GeometryIndexCount()	const { return m_geometryIndexCount; }		
-		auto GeometryVertexOffset() const { return m_geometryVertexOffset; }
-		auto GeometryVertexCount()	const { return m_geometryVertexCount; }
-		auto GeometryType()			const { return m_geometry_type; }
-		const auto& GeometryName()	const { return m_geometryName; }
-		const auto& GeometryModel() const { return m_model; }
-		const Math::BoundingBox& GetAabb();
-        const Math::BoundingBox& GetOobb();
+		auto GeometryIndexOffset()	                const { return m_geometryIndexOffset; }
+		auto GeometryIndexCount()	                const { return m_geometryIndexCount; }		
+		auto GeometryVertexOffset()                 const { return m_geometryVertexOffset; }
+		auto GeometryVertexCount()	                const { return m_geometryVertexCount; }
+		auto GeometryType()			                const { return m_geometry_type; }
+		const auto& GeometryName()	                const { return m_geometryName; }
+		const Model* GeometryModel()                const { return m_model.get(); }
+        const Math::BoundingBox& GetBoundingBox()   const { return m_bounding_box; }
+        const Math::BoundingBox& GetAabb();
 		//=====================================================================================================
 
 		//= MATERIAL ============================================================
 		// Sets a material from memory (adds it to the resource cache by default)
-		void MaterialSet(const std::shared_ptr<Material>& material);
+		void SetMaterial(const std::shared_ptr<Material>& material);
 
 		// Loads a material and the sets it
-		std::shared_ptr<Material> MaterialSet(const std::string& file_path);
+		std::shared_ptr<Material> SetMaterial(const std::string& file_path);
 
 		void UseDefaultMaterial();
-		std::string GetMaterialName();
+		std::string GetMaterialName() const;
 		const auto& GetMaterial()	const { return m_material; }
 		auto HasMaterial()			const { return m_material != nullptr; }
 		//=======================================================================
@@ -113,12 +114,11 @@ namespace Spartan
 		Geometry_Type m_geometry_type;
 		Math::BoundingBox m_bounding_box;
 		Math::BoundingBox m_aabb;
-        Math::BoundingBox m_oobb;
         Math::Matrix m_last_transform   = Math::Matrix::Identity;
         bool m_is_dirty                 = true;
         bool m_castShadows              = true;
         bool m_receiveShadows           = true;
-		bool m_materialDefault;
+		bool m_material_default;
         std::shared_ptr<Material> m_material;
 	};
 }

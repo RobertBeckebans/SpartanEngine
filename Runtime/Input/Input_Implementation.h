@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -26,12 +26,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //=============================
 
 #ifdef API_INPUT_WINDOWS
-	#pragma comment(lib, "dinput8.lib")
-	#pragma comment(lib, "dxguid.lib")
+    #ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+    #endif
 	#pragma comment(lib, "XInput.lib")
-	#ifndef DIRECTINPUT_VERSION
-	#define DIRECTINPUT_VERSION 0x0800
-	#include <dinput.h>
+    #include <windows.h>
 	#include <xinput.h>
-	#endif
 #endif

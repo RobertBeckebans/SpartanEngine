@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,14 +19,14 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ========================
+//= INCLUDES ==================
 #include "ScriptInstance.h"
 #include <angelscript.h>
 #include "Module.h"
-#include "../FileSystem/FileSystem.h"
+#include "../Core/FileSystem.h"
 #include "../Logging/Log.h"
 #include "../World/Entity.h"
-//===================================
+//=============================
 
 //= NAMESPACES =====
 using namespace std;
@@ -34,12 +34,7 @@ using namespace std;
 
 namespace Spartan
 {
-	ScriptInstance::ScriptInstance()
-	{
-
-	}
-
-	ScriptInstance::~ScriptInstance()
+    ScriptInstance::~ScriptInstance()
 	{
 		if (m_scriptObject)
 		{
@@ -50,16 +45,16 @@ namespace Spartan
 		m_constructorFunction	= nullptr;
 		m_startFunction			= nullptr;
 		m_updateFunction		= nullptr;
-		m_scriptEngine			= nullptr;
+		m_scripting			    = nullptr;
 		m_isInstantiated		= false;
 	}
 
-	bool ScriptInstance::Instantiate(const string& path, std::weak_ptr<Entity> entity, shared_ptr<Scripting> scriptEngine)
+	bool ScriptInstance::Instantiate(const string& path, const std::weak_ptr<Entity>& entity, Scripting* scriptEngine)
 	{
 		if (entity.expired())
 			return false;
 
-		m_scriptEngine = scriptEngine;
+		m_scripting = scriptEngine;
 
 		// Extract properties from path
 		m_scriptPath				= path;
@@ -74,45 +69,45 @@ namespace Spartan
 		return m_isInstantiated;
 	}
 
-	void ScriptInstance::ExecuteStart()
-	{
-		if (!m_scriptEngine)
+	void ScriptInstance::ExecuteStart() const
+    {
+		if (!m_scripting)
 		{
 			LOG_ERROR_INVALID_INTERNALS();
 			return;
 		}
 
-		m_scriptEngine->ExecuteCall(m_startFunction, m_scriptObject);
+		m_scripting->ExecuteCall(m_startFunction, m_scriptObject);
 	}
 
-	void ScriptInstance::ExecuteUpdate(float delta_time)
-	{
-		if (!m_scriptEngine)
+	void ScriptInstance::ExecuteUpdate(float delta_time) const
+    {
+		if (!m_scripting)
 		{
 			LOG_ERROR_INVALID_INTERNALS();
 			return;
 		}
 
-		m_scriptEngine->ExecuteCall(m_updateFunction, m_scriptObject, delta_time);
+		m_scripting->ExecuteCall(m_updateFunction, m_scriptObject, delta_time);
 	}
 
 	bool ScriptInstance::CreateScriptObject()
 	{
-		if (!m_scriptEngine)
+		if (!m_scripting)
 		{
 			LOG_ERROR_INVALID_INTERNALS();
 			return false;
 		}
 
 		// Create module
-		m_module	= make_shared<Module>(m_moduleName, m_scriptEngine);
-		bool result = m_module->LoadScript(m_scriptPath);
+		m_module	= make_shared<Module>(m_moduleName, m_scripting);
+        const bool result = m_module->LoadScript(m_scriptPath);
 		if (!result)
 			return false;
 
 		// Get type
-		auto type_id		= m_module->GetAsIScriptModule()->GetTypeIdByDecl(m_className.c_str());
-		asITypeInfo* type	= m_scriptEngine->GetAsIScriptEngine()->GetTypeInfoById(type_id);
+        const auto type_id		= m_module->GetAsIScriptModule()->GetTypeIdByDecl(m_className.c_str());
+		asITypeInfo* type	= m_scripting->GetAsIScriptEngine()->GetTypeInfoById(type_id);
 		if (!type)
 			return false;
 
@@ -122,11 +117,11 @@ namespace Spartan
 		m_constructorFunction	= type->GetFactoryByDecl(m_constructorDeclaration.c_str()); // Get the constructor function from the script
 		if (!m_constructorFunction)
 		{
-			LOG_ERROR("Couldn't find the appropriate factory for the type '" + m_className + "'");
+			LOG_ERROR("Couldn't find the appropriate factory for the type '%s'", m_className.c_str());
 			return false;
 		}
 
-		asIScriptContext* context = m_scriptEngine->RequestContext(); // request a context
+		asIScriptContext* context = m_scripting->RequestContext(); // request a context
 		int r = context->Prepare(m_constructorFunction); // prepare the context to call the factory function
 		if (r < 0) return false;
 
@@ -144,7 +139,7 @@ namespace Spartan
 		m_scriptObject->AddRef();
 
 		// return context
-		m_scriptEngine->ReturnContext(context);
+		m_scripting->ReturnContext(context);
 
 		return true;
 	}

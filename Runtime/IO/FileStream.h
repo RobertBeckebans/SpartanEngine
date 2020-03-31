@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -58,7 +58,10 @@ namespace Spartan
 			std::is_same<T, int>::value					||
 			std::is_same<T, long>::value				||
 			std::is_same<T, long long>::value			||
-			std::is_same<T, uint32_t>::value			||
+			std::is_same<T, uint8_t>::value			    ||
+            std::is_same<T, uint16_t>::value			||
+            std::is_same<T, uint32_t>::value			||
+            std::is_same<T, uint64_t>::value			||
 			std::is_same<T, unsigned long>::value		||
 			std::is_same<T, unsigned long long>::value	||
 			std::is_same<T, float>::value				||
@@ -93,7 +96,10 @@ namespace Spartan
 			std::is_same<T, int>::value					||
 			std::is_same<T, long>::value				||
 			std::is_same<T, long long>::value			||
-			std::is_same<T, uint32_t>::value			||
+            std::is_same<T, uint8_t>::value			    ||
+            std::is_same<T, uint16_t>::value			||
+            std::is_same<T, uint32_t>::value			||
+			std::is_same<T, uint64_t>::value			||
 			std::is_same<T, unsigned long>::value		||
 			std::is_same<T, unsigned long long>::value	||
 			std::is_same<T, float>::value				||
@@ -125,7 +131,10 @@ namespace Spartan
 			std::is_same<T, int>::value					||
 			std::is_same<T, long>::value				||
 			std::is_same<T, long long>::value			||
-			std::is_same<T, uint32_t>::value			||
+			std::is_same<T, uint8_t>::value			    ||
+            std::is_same<T, uint16_t>::value			||
+            std::is_same<T, uint32_t>::value			||
+            std::is_same<T, uint64_t>::value			||
 			std::is_same<T, unsigned long>::value		||
 			std::is_same<T, unsigned long long>::value	||
 			std::is_same<T, float>::value				||

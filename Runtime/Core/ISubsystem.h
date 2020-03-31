@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -23,16 +23,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 //= INCLUDES ==========
 #include "EngineDefs.h"
+#include <type_traits>
+#include <memory>
 //=====================
 
 namespace Spartan
 {
 	class Context;
 
-    template<typename T>
-    constexpr void validate_subsystem_type() { static_assert(std::is_base_of<ISubsystem, T>::value, "Provided type does not implement ISubystem"); }
-
-	class SPARTAN_CLASS ISubsystem
+	class SPARTAN_CLASS ISubsystem : public std::enable_shared_from_this<ISubsystem>
 	{		
 	public:
 		ISubsystem(Context* context) { m_context = context; }
@@ -40,7 +39,13 @@ namespace Spartan
 		virtual bool Initialize() { return true; }
 		virtual void Tick(float delta_time) {}
 
+        template <typename T>
+        std::shared_ptr<T> GetPtrShared() { return dynamic_pointer_cast<T>(shared_from_this()); }
+
 	protected:
 		Context* m_context;
 	};
+
+    template<typename T>
+    constexpr void validate_subsystem_type() { static_assert(std::is_base_of<ISubsystem, T>::value, "Provided type does not implement ISubystem"); }
 }

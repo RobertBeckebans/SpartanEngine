@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -30,11 +30,12 @@ namespace Spartan
 	class SPARTAN_CLASS RHI_TextureCube : public RHI_Texture
 	{
 	public:
-		RHI_TextureCube(Context* context) : RHI_Texture(context) { m_resource_type = Resource_TextureCube; }
+        RHI_TextureCube(Context* context) : RHI_Texture(context) { m_resource_type = Resource_TextureCube; }
 
-		// Creates a cubemap. 6 textures containing mip-levels have to be provided
+		// Creates a cubemap with initial data, 6 textures containing (possibly) mip-levels.
 		RHI_TextureCube(Context* context, const uint32_t width, const uint32_t height, const RHI_Format format, const std::vector<std::vector<std::vector<std::byte>>>& data) : RHI_Texture(context)
 		{
+            m_resource_type = Resource_TextureCube;
 			m_width			= width;
 			m_height		= height;
 			m_viewport		= RHI_Viewport(0, 0, static_cast<float>(width), static_cast<float>(height));
@@ -42,21 +43,25 @@ namespace Spartan
 			m_format		= format;
 			m_data_cube		= data;
 			m_array_size	= 6;
-			m_bind_flags	= RHI_Texture_Sampled;
+			m_flags	= RHI_Texture_ShaderView;
+            m_mip_levels    = static_cast<uint32_t>(m_data.front().size());
 
 			RHI_TextureCube::CreateResourceGpu();
 		}
 
-		// Creates a cubemap, to be used as a render target
+		// Creates a cubemap without any initial data, to be used as a render target
 		RHI_TextureCube(Context* context, const uint32_t width, const uint32_t height, const RHI_Format format) : RHI_Texture(context)
 		{
+            m_resource_type = Resource_TextureCube;
 			m_width			= width;
 			m_height		= height;
 			m_channels		= GetChannelCountFromFormat(format);
 			m_viewport		= RHI_Viewport(0, 0, static_cast<float>(width), static_cast<float>(height));
 			m_format		= format;
 			m_array_size	= 6;
-			m_bind_flags	= RHI_Texture_DepthStencil;
+            m_flags    = RHI_Texture_ShaderView;
+			m_flags	|= IsDepthFormat() ? RHI_Texture_DepthStencilView : RHI_Texture_RenderTargetView;
+            m_mip_levels    = 1;
 
 			RHI_TextureCube::CreateResourceGpu();
 		}

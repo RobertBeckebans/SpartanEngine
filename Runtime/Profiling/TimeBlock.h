@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,15 +21,22 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ====
+//= INCLUDES =====================
 #include <chrono>
 #include <memory>
-#include <string>
-//===============
+#include "..\RHI\RHI_Definition.h"
+//================================
 
 namespace Spartan
 {
 	class RHI_Device;
+
+    enum TimeBlock_Type
+    {
+        TimeBlock_Cpu,
+        TimeBlock_Gpu,
+        TimeBlock_Undefined
+    };
 
 	class TimeBlock
 	{
@@ -37,43 +44,38 @@ namespace Spartan
 		TimeBlock() = default;
 		~TimeBlock();
 
-		void Begin(const std::string& name, bool profile_cpu = false, bool profile_gpu = false, const TimeBlock* parent = nullptr, const std::shared_ptr<RHI_Device>& rhi_device = nullptr);
-		void End(const std::shared_ptr<RHI_Device>& rhi_device = nullptr);
-		void OnFrameEnd(const std::shared_ptr<RHI_Device>& rhi_device);
-		void Clear();
-
-		const bool IsProfilingCpu() const	{ return m_profiling_cpu; }
-		const bool IsProfilingGpu() const	{ return m_profiling_gpu; }
-		const bool IsComplete() const		{ return m_is_complete; }
-		const auto& GetName() const	        { return m_name; }
-		const auto GetParent() const	    { return m_parent; }
-		auto GetTreeDepth()	const	        { return m_tree_depth; }
-		auto GetDurationCpu() const		    { return m_duration_cpu; }
-		auto GetDurationGpu() const		    { return m_duration_gpu; }
+		void Begin(const char* name, TimeBlock_Type type, const TimeBlock* parent = nullptr, RHI_CommandList* cmd_list = nullptr, const std::shared_ptr<RHI_Device>& rhi_device = nullptr);
+		void End();
+        void ComputeDuration();
+        void Reset();
+        TimeBlock_Type GetType()        const { return m_type; }	
+		const char* GetName()           const { return m_name; }
+        const TimeBlock* GetParent()    const { return m_parent; }
+        uint32_t GetTreeDepth()         const { return m_tree_depth; }
+        uint32_t GetTreeDepthMax()      const { return m_max_tree_depth; }
+        float GetDuration()             const { return m_duration; }
+        bool IsComplete()               const { return m_is_complete; }
 
 	private:	
 		static uint32_t FindTreeDepth(const TimeBlock* time_block, uint32_t depth = 0);
+        static uint32_t m_max_tree_depth;
 
-		std::string m_name;
-		RHI_Device* m_rhi_device    = nullptr;
-        bool m_has_started          = false;
-        bool m_is_complete          = false;
-
-		// Hierarchy
+		const char* m_name          = nullptr;
+        TimeBlock_Type m_type       = TimeBlock_Undefined;
+        float m_duration            = 0.0f;
 		const TimeBlock* m_parent	= nullptr;
 		uint32_t m_tree_depth	    = 0;
+        bool m_is_complete          = false;
+        RHI_Device* m_rhi_device    = nullptr;
 
 		// CPU timing
-		bool m_profiling_cpu	= false;
-		float m_duration_cpu	= 0.0f;
-		std::chrono::steady_clock::time_point start;
-		std::chrono::steady_clock::time_point end;
+		std::chrono::steady_clock::time_point m_start;
+		std::chrono::steady_clock::time_point m_end;
 	
 		// GPU timing
-		bool m_profiling_gpu	= false;
-		float m_duration_gpu	= 0.0f;
-		void* m_query			= nullptr;
-		void* m_query_start		= nullptr;
-		void* m_query_end		= nullptr;
+		void* m_query_disjoint	    = nullptr;
+		void* m_query_start		    = nullptr;
+		void* m_query_end		    = nullptr;
+        RHI_CommandList* m_cmd_list = nullptr;
 	};
 }

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -20,8 +20,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
 //= IMPLEMENTATION ===============
-#include "../RHI_Implementation.h"
 #ifdef API_GRAPHICS_VULKAN
+#include "../RHI_Implementation.h"
 //================================
 
 //= INCLUDES ======================
@@ -43,7 +43,8 @@ namespace Spartan
 		const bool depth_clip_enabled,
 		const bool scissor_enabled,
 		const bool multi_sample_enabled,
-		const bool antialised_line_enabled)
+		const bool antialised_line_enabled,
+        const float line_width /*= 1.0f */)
 	{
 		m_cull_mode					= cull_mode;
 		m_fill_mode					= fill_mode;
@@ -51,6 +52,7 @@ namespace Spartan
 		m_scissor_enabled			= scissor_enabled;
 		m_multi_sample_enabled		= multi_sample_enabled;
 		m_antialised_line_enabled	= antialised_line_enabled;
+        m_line_width                = line_width;
 	}
 
 	RHI_RasterizerState::~RHI_RasterizerState()

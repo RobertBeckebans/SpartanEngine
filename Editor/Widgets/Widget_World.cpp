@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,25 +19,26 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ===============================
+//= INCLUDES ==============================
 #include "Widget_World.h"
 #include "Widget_Properties.h"
 #include "../ImGui_Extension.h"
 #include "../ImGui/Source/imgui_stdlib.h"
-#include "Input/Input.h"
 #include "Resource/ProgressReport.h"
+#include "Rendering/Model.h"
 #include "World/Entity.h"
 #include "World/Components/Transform.h"
 #include "World/Components/Light.h"
 #include "World/Components/AudioSource.h"
 #include "World/Components/AudioListener.h"
 #include "World/Components/RigidBody.h"
+#include "World/Components/SoftBody.h"
 #include "World/Components/Collider.h"
-#include "World/Components/Camera.h"
 #include "World/Components/Constraint.h"
 #include "World/Components/Renderable.h"
 #include "World/Components/Environment.h"
-//==========================================
+#include "World/Components/Terrain.h"
+//=========================================
 
 //= NAMESPACES ==========
 using namespace std;
@@ -59,8 +60,8 @@ namespace _Widget_World
 Widget_World::Widget_World(Context* context) : Widget(context)
 {
 	m_title					= "World";
-	_Widget_World::g_world	= m_context->GetSubsystem<World>().get();
-	_Widget_World::g_input	= m_context->GetSubsystem<Input>().get();
+	_Widget_World::g_world	= m_context->GetSubsystem<World>();
+	_Widget_World::g_input	= m_context->GetSubsystem<Input>();
 
 	m_flags |= ImGuiWindowFlags_HorizontalScrollbar;
 
@@ -99,12 +100,12 @@ void Widget_World::TreeShow()
 	if (ImGui::TreeNodeEx("Root", ImGuiTreeNodeFlags_DefaultOpen))
 	{
 		// Dropping on the scene node should unparent the entity
-		if (auto payload = ImGuiEx::ReceiveDragPayload(ImGuiEx::DragPayload_entity))
+		if (auto payload = ImGuiEx::ReceiveDragPayload(ImGuiEx::DragPayload_Entity))
 		{
 			const auto entity_id = get<unsigned int>(payload->data);
 			if (const auto dropped_entity = _Widget_World::g_world->EntityGetById(entity_id))
 			{
-				dropped_entity->GetTransform_PtrRaw()->SetParent(nullptr);
+				dropped_entity->GetTransform()->SetParent(nullptr);
 			}
 		}
 
@@ -145,10 +146,10 @@ void Widget_World::TreeAddEntity(Entity* entity)
 		return;
 
 	// Determine children visibility
-	auto children = entity->GetTransform_PtrRaw()->GetChildren();
+	auto children = entity->GetTransform()->GetChildren();
 	for (const auto& child : children)
 	{
-		if (child->GetEntity_PtrRaw()->IsVisibleInHierarchy())
+		if (child->GetEntity()->IsVisibleInHierarchy())
 		{
 			has_visible_children = true;
 			break;
@@ -156,7 +157,7 @@ void Widget_World::TreeAddEntity(Entity* entity)
 	}
 
 	// Flags
-	ImGuiTreeNodeFlags node_flags	= ImGuiTreeNodeFlags_AllowItemOverlap;
+	ImGuiTreeNodeFlags node_flags	= ImGuiTreeNodeFlags_AllowItemOverlap | ImGuiTreeNodeFlags_SpanAvailWidth;
 
 	// Flag - Is expandable (has children) ?
 	node_flags |= has_visible_children ? ImGuiTreeNodeFlags_OpenOnArrow : ImGuiTreeNodeFlags_Leaf; 
@@ -171,7 +172,7 @@ void Widget_World::TreeAddEntity(Entity* entity)
 		if (m_expand_to_show_entity)
 		{
 			// If the selected entity is a descendant of the this entity, start expanding (this can happen if the user clicks on something in the 3D scene)
-			if (selected_entity->GetTransform_PtrRaw()->IsDescendantOf(entity->GetTransform_PtrRaw()))
+			if (selected_entity->GetTransform()->IsDescendantOf(entity->GetTransform()))
 			{
 				ImGui::SetNextItemOpen(true);
 
@@ -201,10 +202,10 @@ void Widget_World::TreeAddEntity(Entity* entity)
 		{
 			for (const auto& child : children)
 			{
-				if (!child->GetEntity_PtrRaw()->IsVisibleInHierarchy())
+				if (!child->GetEntity()->IsVisibleInHierarchy())
 					continue;
 
-				TreeAddEntity(child->GetEntity_PtrRaw());
+				TreeAddEntity(child->GetEntity());
 			}
 		}
 
@@ -253,19 +254,19 @@ void Widget_World::EntityHandleDragDrop(Entity* entity_ptr) const
 	if (ImGui::BeginDragDropSource())
 	{
 		_Widget_World::g_payload.data = entity_ptr->GetId();
-		_Widget_World::g_payload.type = ImGuiEx::DragPayload_entity;
+		_Widget_World::g_payload.type = ImGuiEx::DragPayload_Entity;
 		ImGuiEx::CreateDragPayload(_Widget_World::g_payload);
 		ImGui::EndDragDropSource();
 	}
 	// Drop
-	if (auto payload = ImGuiEx::ReceiveDragPayload(ImGuiEx::DragPayload_entity))
+	if (auto payload = ImGuiEx::ReceiveDragPayload(ImGuiEx::DragPayload_Entity))
 	{
 		const auto entity_id = get<unsigned int>(payload->data);
 		if (const auto dropped_entity = _Widget_World::g_world->EntityGetById(entity_id))
 		{
 			if (dropped_entity->GetId() != entity_ptr->GetId())
 			{
-				dropped_entity->GetTransform_PtrRaw()->SetParent(entity_ptr->GetTransform_PtrRaw());
+				dropped_entity->GetTransform()->SetParent(entity_ptr->GetTransform());
 			}
 		}
 	}
@@ -290,12 +291,12 @@ void Widget_World::Popups()
 	PopupEntityRename();
 }
 
-void Widget_World::PopupContextMenu()
+void Widget_World::PopupContextMenu() const
 {
 	if (!ImGui::BeginPopup("##HierarchyContextMenu"))
 		return;
 
-	auto selected_entity	= EditorHelper::Get().g_selected_entity.lock();
+    const auto selected_entity	= EditorHelper::Get().g_selected_entity.lock();
 	const auto on_entity	= selected_entity != nullptr;
 
 	if (on_entity) if (ImGui::MenuItem("Copy"))
@@ -387,6 +388,10 @@ void Widget_World::PopupContextMenu()
 		{
 			ActionEntityCreateRigidBody();
 		}
+        else if (ImGui::MenuItem("Soft Body"))
+        {
+            ActionEntityCreateSoftBody();
+        }
 		else if (ImGui::MenuItem("Collider"))
 		{
 			ActionEntityCreateCollider();
@@ -424,6 +429,12 @@ void Widget_World::PopupContextMenu()
 
 		ImGui::EndMenu();
 	}
+
+    // TERRAIN
+    if (ImGui::MenuItem("Terrain"))
+    {
+        ActionEntityCreateTerrain();
+    }
 
 	ImGui::EndPopup();
 }
@@ -481,7 +492,7 @@ Entity* Widget_World::ActionEntityCreateEmpty()
 	const auto entity = _Widget_World::g_world->EntityCreate().get();
 	if (const auto selected_entity = EditorHelper::Get().g_selected_entity.lock())
 	{
-		entity->GetTransform_PtrRaw()->SetParent(selected_entity->GetTransform_PtrRaw());
+		entity->GetTransform()->SetParent(selected_entity->GetTransform());
 	}
 
 	return entity;
@@ -539,6 +550,13 @@ void Widget_World::ActionEntityCreateCamera()
 	entity->SetName("Camera");
 }
 
+void Widget_World::ActionEntityCreateTerrain()
+{
+    auto entity = ActionEntityCreateEmpty();
+    entity->AddComponent<Terrain>();
+    entity->SetName("Terrain");
+}
+
 void Widget_World::ActionEntityCreateLightDirectional()
 {
 	auto entity = ActionEntityCreateEmpty();
@@ -565,6 +583,13 @@ void Widget_World::ActionEntityCreateRigidBody()
 	auto entity = ActionEntityCreateEmpty();
 	entity->AddComponent<RigidBody>();
 	entity->SetName("RigidBody");
+}
+
+void Widget_World::ActionEntityCreateSoftBody()
+{
+    auto entity = ActionEntityCreateEmpty();
+    entity->AddComponent<SoftBody>();
+    entity->SetName("SoftBody");
 }
 
 void Widget_World::ActionEntityCreateCollider()

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -35,19 +35,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "FXAA.hlsl"
 //=================================
 
-Texture2D sourceTexture 		: register(t0);
-Texture2D sourceTexture2 		: register(t1);
-Texture2D sourceTexture3 		: register(t2);
-Texture2D sourceTexture4 		: register(t3);
-SamplerState samplerState 		: register(s0);
-
-cbuffer BlurBuffer : register(b1)
-{	
-	float2 blur_direction;
-	float blur_sigma;
-	float blur_padding;
-}
-
 Pixel_PosUv mainVS(Vertex_PosUv input)
 {
     Pixel_PosUv output;
@@ -61,130 +48,132 @@ Pixel_PosUv mainVS(Vertex_PosUv input)
 
 float4 mainPS(Pixel_PosUv input) : SV_TARGET
 {
-    float2 texCoord 	= input.uv;
-    float4 color 		= float4(1.0f, 0.0f, 0.0f, 1.0f);
+    float2 uv 		= input.uv;
+    float4 color 	= float4(1.0f, 0.0f, 0.0f, 1.0f);
 
 #if PASS_GAMMA_CORRECTION
-	color 		= sourceTexture.Sample(samplerState, texCoord);
+	color 		= tex.Sample(sampler_point_clamp, uv);
 	color 		= gamma(color);
 #endif
 
 #if PASS_TONEMAPPING
-	color 		= sourceTexture.Sample(samplerState, texCoord);
+	color 		= tex.Sample(sampler_point_clamp, uv);
 	color.rgb 	= ToneMap(color.rgb, g_exposure);
 #endif
 
 #if PASS_TEXTURE
-	color = sourceTexture.Sample(samplerState, texCoord);
+	color = tex.Sample(sampler_bilinear_clamp, uv);
 #endif
 
 #if PASS_FXAA
-	// Requirements: Bilinear sampler
-	FxaaTex tex 				= { samplerState, sourceTexture };
+	FxaaTex fxaa_tex 			= { sampler_bilinear_clamp, tex };
     float2 fxaaQualityRcpFrame	= g_texel_size;
-  
+
+    float fxaa_subPix           = 0.75f;
+	float fxaa_edgeThreshold    = 0.166f;
+	float fxaa_edgeThresholdMin = 0.0833f;
+    
 	color.rgb = FxaaPixelShader
 	( 
-		texCoord, 0, tex, tex, tex,
+		uv, 0, fxaa_tex, fxaa_tex, fxaa_tex,
 		fxaaQualityRcpFrame, 0, 0, 0,
-		g_fxaa_subPix,
-		g_fxaa_edgeThreshold,
-		g_fxaa_edgeThresholdMin,
+		fxaa_subPix,
+		fxaa_edgeThreshold,
+		fxaa_edgeThresholdMin,
 		0, 0, 0, 0
 	).rgb;
 	color.a = 1.0f;
 #endif
 
 #if PASS_CHROMATIC_ABERRATION
-	// Requirements: Bilinear sampler
-	color.rgb = ChromaticAberration(texCoord, g_texel_size, sourceTexture, samplerState);
+	color.rgb = ChromaticAberration(uv, tex);
 #endif
 
 #if PASS_LUMA_SHARPEN
-	// Requirements: Bilinear sampler
-	color.rgb = LumaSharpen(texCoord, sourceTexture, samplerState, g_resolution, g_sharpen_strength, g_sharpen_clamp);	
+	color.rgb = LumaSharpen(uv, tex, g_resolution, g_sharpen_strength, g_sharpen_clamp);	
 #endif
 
 #if PASS_TAA_RESOLVE
-	color = ResolveTAA(texCoord, sourceTexture, sourceTexture2, sourceTexture3, sourceTexture4, samplerState);
+	color = ResolveTAA(uv, tex, tex2);
 #endif
 
 #if PASS_TAA_SHARPEN
-	// Requirements: Bilinear sampler
-	color = SharpenTaa(texCoord, sourceTexture, samplerState);	
+	color = SharpenTaa(uv, tex);	
 #endif
 
 #if PASS_UPSAMPLE_BOX
-	color = Upsample_Box(texCoord, g_texel_size, sourceTexture, samplerState, 1.0f);
+	color = Upsample_Box(uv, tex);
+#endif
+
+#if PASS_DOWNSAMPLE_BOX
+	color = Downsample_Box(uv, tex);
 #endif
 
 #if PASS_BLUR_BOX
-	color = Blur_Box(texCoord, g_texel_size, blur_sigma, sourceTexture, samplerState);
+	color = Blur_Box(uv, tex);
 #endif
 
 #if PASS_BLUR_GAUSSIAN
-	// Requirements: Bilinear sampler
-	color = Blur_Gaussian(texCoord, sourceTexture, samplerState, g_texel_size, blur_direction, blur_sigma);
+	color = Blur_Gaussian(uv, tex);
 #endif
 
 #if PASS_BLUR_BILATERAL_GAUSSIAN
-	// Requirements: Bilinear sampler
-	color = Blur_GaussianBilateral(texCoord, sourceTexture, sourceTexture2, sourceTexture3, samplerState, g_texel_size, blur_direction, blur_sigma);
+	color = Blur_GaussianBilateral(uv, tex);
 #endif
 
 #if PASS_BLOOM_DOWNSAMPLE
-	color = Downsample_Box13Tap(texCoord, g_texel_size, sourceTexture, samplerState);
+	color = Downsample_Box13Tap(uv, tex);
 #endif
 
 #if PASS_BLOOM_DOWNSAMPLE_LUMINANCE
-	color = Downsample_Box13Tap(texCoord, g_texel_size, sourceTexture, samplerState);
+	color = Downsample_Box13Tap(uv, tex);
 	color = luminance(color) * color;
 #endif
 
 #if PASS_BLOOM_BLEND_ADDITIVE
-	float4 sourceColor 	= sourceTexture.Sample(samplerState, texCoord);
-	float4 sourceColor2 = Upsample_Box(texCoord, g_texel_size, sourceTexture2, samplerState, 2.0f);
+	float4 sourceColor 	= tex.Sample(sampler_point_clamp, uv);
+	float4 sourceColor2 = Upsample_Box(uv, tex2);
 	color 				= sourceColor + sourceColor2 * g_bloom_intensity;
 #endif
 
 #if PASS_LUMA
-	color 	= sourceTexture.Sample(samplerState, texCoord);
+	color 	= tex.Sample(sampler_point_clamp, uv);
     color.a = luminance(color.rgb);
 #endif
 
 #if PASS_DITHERING
-	color = sourceTexture.Sample(samplerState, texCoord);
-    color = Dither_Ordered(color, texCoord);
+	color = tex.Sample(sampler_point_clamp, uv);
+    color.rgb += dither(uv);
 #endif
 
 #if PASS_MOTION_BLUR
-	color = MotionBlur(texCoord, sourceTexture, sourceTexture2, sourceTexture3, samplerState);
+	color = MotionBlur(uv, tex);
 #endif
 
 #if DEBUG_NORMAL
-	float3 normal = sourceTexture.Sample(samplerState, texCoord).rgb;
+	float3 normal = tex.Sample(sampler_point_clamp, uv).rgb;
 	normal = pack(normal);
 	color = float4(normal, 1.0f);
 #endif
 
 #if DEBUG_VELOCITY
-	float3 velocity = sourceTexture.Sample(samplerState, texCoord).rgb;
+	float3 velocity = tex.Sample(sampler_point_clamp, uv).rgb;
 	velocity = abs(velocity) * 20.0f;
 	color = float4(velocity, 1.0f);
 #endif
 
 #if DEBUG_R_CHANNEL
-	float r = sourceTexture.Sample(samplerState, texCoord).r;
+	float r = tex.Sample(sampler_point_clamp, uv).r;
 	color = float4(r, r, r, 1.0f);
 #endif
 
 #if DEBUG_A_CHANNEL
-	float a = sourceTexture.Sample(samplerState, texCoord).a;
+	float a = tex.Sample(sampler_point_clamp, uv).a;
 	color = float4(a, a, a, 1.0f);
 #endif
 
 #if DEBUG_RGB_CHANNEL_GAMMA_CORRECT
-	float3 rgb 	= sourceTexture.Sample(samplerState, texCoord).rgb;
+	float3 rgb 	= tex.Sample(sampler_point_clamp, uv).rgb;
 	rgb 		= gamma(rgb);
 	color 		= float4(rgb, 1.0f);
 #endif

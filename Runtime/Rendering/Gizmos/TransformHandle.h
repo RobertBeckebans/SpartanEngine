@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -54,7 +54,7 @@ namespace Spartan
 		void UpdateTransform()
 		{
 			transform		= Math::Matrix(position, rotation, scale);
-			box_transformed	= box.TransformToAabb(transform);
+			box_transformed	= box.Transform(transform);
 		}
 
 		void UpdateInput(TransformHandle_Type type, Transform* transform, Input* input);
@@ -94,14 +94,14 @@ namespace Spartan
 		~TransformHandle() = default;
 
 		void Initialize(TransformHandle_Type type, Context* context);
-		bool Update(TransformHandle_Space space, const std::shared_ptr<Entity>& entity, Camera* camera, float handle_size, float handle_speed);
+		bool Update(TransformHandle_Space space, Entity* entity, Camera* camera, float handle_size, float handle_speed);
 		const Math::Matrix& GetTransform(const Math::Vector3& axis) const;
 		const Math::Vector3& GetColor(const Math::Vector3& axis) const;
-		std::shared_ptr<RHI_VertexBuffer> GetVertexBuffer() const;
-		std::shared_ptr<RHI_IndexBuffer> GetIndexBuffer() const;
+		const RHI_VertexBuffer* GetVertexBuffer() const;
+		const RHI_IndexBuffer* GetIndexBuffer() const;
 	
 	private:
-		void SnapToTransform(TransformHandle_Space space, const std::shared_ptr<Entity>& entity, Camera* camera, float handle_size);
+		void SnapToTransform(TransformHandle_Space space, Entity* entity, Camera* camera, float handle_size);
 
         TransformHandleAxis m_handle_x;
         TransformHandleAxis m_handle_y;

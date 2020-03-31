@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,12 +24,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifdef API_GRAPHICS_D3D11
 //================================
 
-//= INCLUDES ===================
+//= INCLUDES ========================
 #include "../RHI_SwapChain.h"
 #include "../RHI_Device.h"
 #include "../../Logging/Log.h"
-#include "../../Math/Vector4.h"
-//==============================
+#include "../RHI_CommandList.h"
+#include "../../Rendering/Renderer.h"
+#include "../../Profiling/Profiler.h"
+//===================================
 
 //= NAMESPACES ================
 using namespace std;
@@ -40,7 +42,7 @@ namespace Spartan
 {
 	RHI_SwapChain::RHI_SwapChain(
 		void* window_handle,
-		const std::shared_ptr<RHI_Device>& device,
+        const shared_ptr<RHI_Device>& rhi_device,
 		const uint32_t width,
 		const uint32_t height,
 		const RHI_Format format	    /*= Format_R8G8B8A8_UNORM*/,	
@@ -48,32 +50,33 @@ namespace Spartan
         const uint32_t flags	    /*= Present_Immediate */
 	)
 	{
+        // Validate device
+        if (!rhi_device || !rhi_device->GetContextRhi()->device)
+        {
+            LOG_ERROR("Invalid device.");
+            return;
+        }
+
+        // Validate window handle
 		const auto hwnd	= static_cast<HWND>(window_handle);
-		if (!hwnd || !device || !IsWindow(hwnd))
+		if (!hwnd|| !IsWindow(hwnd))
 		{
 			LOG_ERROR_INVALID_PARAMETER();
 			return;
 		}
 
-		// Return if resolution is invalid
-		if (width == 0 || width > m_max_resolution || height == 0 || height > m_max_resolution)
-		{
-			LOGF_WARNING("%dx%d is an invalid resolution", width, height);
-			return;
-		}
-
-		// Get device
-		if (!device->GetContextRhi()->device)
-		{
-			LOG_ERROR("Invalid device.");
-			return;
-		}
+        // Validate resolution
+        if (!rhi_device->ValidateResolution(width, height))
+        {
+            LOG_WARNING("%dx%d is an invalid resolution", width, height);
+            return;
+        }
 
 		// Get factory
 		IDXGIFactory* dxgi_factory = nullptr;
-		if (const auto& adapter = device->GetPrimaryAdapter())
+		if (const auto& adapter = rhi_device->GetPrimaryPhysicalDevice())
 		{
-			auto dxgi_adapter = static_cast<IDXGIAdapter*>(adapter->data);
+			auto dxgi_adapter = static_cast<IDXGIAdapter*>(adapter->GetData());
 			dxgi_adapter->GetParent(IID_PPV_ARGS(&dxgi_factory));
 
 			if (!dxgi_factory)
@@ -90,12 +93,12 @@ namespace Spartan
 
 		// Save parameters
 		m_format		= format;
-		m_rhi_device	= device;
+        m_rhi_device    = rhi_device.get();
 		m_buffer_count	= buffer_count;
 		m_windowed		= true;
 		m_width			= width;
 		m_height		= height;
-		m_flags			= D3D11_Common::swap_chain::validate_flags(m_rhi_device.get(), flags);
+		m_flags			= d3d11_common::swap_chain::validate_flags(m_rhi_device, flags);
 
 		// Create swap chain
 		{
@@ -112,14 +115,14 @@ namespace Spartan
 			desc.Windowed						= m_windowed ? TRUE : FALSE;
 			desc.BufferDesc.ScanlineOrdering	= DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
 			desc.BufferDesc.Scaling				= DXGI_MODE_SCALING_UNSPECIFIED;
-			desc.SwapEffect						= D3D11_Common::swap_chain::get_swap_effect(m_rhi_device.get(), m_flags);
-			desc.Flags							= D3D11_Common::swap_chain::get_flags(m_flags);
+			desc.SwapEffect						= d3d11_common::swap_chain::get_swap_effect(m_rhi_device, m_flags);
+			desc.Flags							= d3d11_common::swap_chain::get_flags(m_flags);
 
 			auto swap_chain		= static_cast<IDXGISwapChain*>(m_swap_chain_view);
 			const auto result	= dxgi_factory->CreateSwapChain(m_rhi_device->GetContextRhi()->device, &desc, &swap_chain);
 			if (FAILED(result))
 			{
-				LOGF_ERROR("%s", D3D11_Common::dxgi_error_to_string(result));
+				LOG_ERROR("%s", d3d11_common::dxgi_error_to_string(result));
 				return;
 			}
 			m_swap_chain_view = static_cast<void*>(swap_chain);
@@ -132,20 +135,26 @@ namespace Spartan
 			auto result = swap_chain->GetBuffer(0, IID_PPV_ARGS(&backbuffer));
 			if (FAILED(result))
 			{
-				LOGF_ERROR("%s", D3D11_Common::dxgi_error_to_string(result));
+				LOG_ERROR("%s", d3d11_common::dxgi_error_to_string(result));
 				return;
 			}
 
-			auto render_target_view = static_cast<ID3D11RenderTargetView*>(m_render_target_view);
-			result = m_rhi_device->GetContextRhi()->device->CreateRenderTargetView(backbuffer, nullptr, &render_target_view);
+			auto render_target_view = static_cast<ID3D11RenderTargetView*>(m_resource_render_target_view);
+			result = rhi_device->GetContextRhi()->device->CreateRenderTargetView(backbuffer, nullptr, &render_target_view);
 			backbuffer->Release();
 			if (FAILED(result))
 			{
-				LOGF_ERROR("%s", D3D11_Common::dxgi_error_to_string(result));
+				LOG_ERROR("%s", d3d11_common::dxgi_error_to_string(result));
 				return;
 			}
-			m_render_target_view = static_cast<void*>(render_target_view);
+			m_resource_render_target_view = static_cast<void*>(render_target_view);
 		}
+
+        // Create command lists
+        for (uint32_t i = 0; i < m_buffer_count; i++)
+        {
+            m_cmd_lists.emplace_back(make_shared<RHI_CommandList>(i, this, rhi_device->GetContext()));
+        }
 
 		m_initialized = true;
 	}
@@ -160,8 +169,10 @@ namespace Spartan
 			swap_chain->SetFullscreenState(false, nullptr);
 		}
 
+        m_cmd_lists.clear();
+
 		safe_release(swap_chain);
-		safe_release(static_cast<ID3D11RenderTargetView*>(m_render_target_view));
+		safe_release(*reinterpret_cast<ID3D11RenderTargetView**>(&m_resource_render_target_view));
 	}
 
 	bool RHI_SwapChain::Resize(const uint32_t width, const uint32_t height)
@@ -172,15 +183,17 @@ namespace Spartan
 			return false;
 		}
 
-		// Return if resolution is invalid
-		if (width == 0 || width > m_max_resolution || height == 0 || height > m_max_resolution)
-		{
-			LOGF_WARNING("%dx%d is an invalid resolution", width, height);
-			return false;
-		}
+        // Validate resolution
+        m_present = m_rhi_device->ValidateResolution(width, height);
+        if (!m_present)
+        {
+            // Return true as when minimizing, a resolution
+            // of 0,0 can be passed in, and this is fine.
+            return true;
+        }
 
 		auto swap_chain			= static_cast<IDXGISwapChain*>(m_swap_chain_view);
-		auto render_target_view	= static_cast<ID3D11RenderTargetView*>(m_render_target_view);
+		auto render_target_view	= static_cast<ID3D11RenderTargetView*>(m_resource_render_target_view);
 
 		// Release previous stuff
 		safe_release(render_target_view);
@@ -188,40 +201,41 @@ namespace Spartan
 		// Set this flag to enable an application to switch modes by calling IDXGISwapChain::ResizeTarget.
 		// When switching from windowed to full-screen mode, the display mode (or monitor resolution)
 		// will be changed to match the dimensions of the application window.
-		if (m_flags & SwapChain_Allow_Mode_Switch)
+		if (m_flags & RHI_SwapChain_Allow_Mode_Switch)
 		{		
-			DisplayMode display_mode;
-			if (!m_rhi_device->GetDisplayModeFastest(&display_mode))
+			if (const DisplayMode* display_mode = m_rhi_device->GetPrimaryDisplayMode())
 			{
-				LOG_ERROR("Failed to get a display mode");
-				return false;
-			}
+			    // Resize swapchain target
+			    DXGI_MODE_DESC dxgi_mode_desc;
+			    ZeroMemory(&dxgi_mode_desc, sizeof(dxgi_mode_desc));
+			    dxgi_mode_desc.Width			= static_cast<UINT>(width);
+			    dxgi_mode_desc.Height			= static_cast<UINT>(height);
+			    dxgi_mode_desc.Format			= d3d11_format[m_format];
+			    dxgi_mode_desc.RefreshRate		= DXGI_RATIONAL{ display_mode->numerator, display_mode->denominator };
+			    dxgi_mode_desc.Scaling			= DXGI_MODE_SCALING_UNSPECIFIED;
+			    dxgi_mode_desc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
 
-			// Resize swapchain target
-			DXGI_MODE_DESC dxgi_mode_desc;
-			ZeroMemory(&dxgi_mode_desc, sizeof(dxgi_mode_desc));
-			dxgi_mode_desc.Width			= static_cast<UINT>(width);
-			dxgi_mode_desc.Height			= static_cast<UINT>(height);
-			dxgi_mode_desc.Format			= d3d11_format[m_format];
-			dxgi_mode_desc.RefreshRate		= DXGI_RATIONAL{ display_mode.refreshRateNumerator, display_mode.refreshRateDenominator };
-			dxgi_mode_desc.Scaling			= DXGI_MODE_SCALING_UNSPECIFIED;
-			dxgi_mode_desc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
-
-			// Resize swapchain target
-			const auto result = swap_chain->ResizeTarget(&dxgi_mode_desc);
-			if (FAILED(result))
-			{
-				LOGF_ERROR("Failed to resize swapchain target, %s.", D3D11_Common::dxgi_error_to_string(result));
-				return false;
-			}
+			    // Resize swapchain target
+			    const auto result = swap_chain->ResizeTarget(&dxgi_mode_desc);
+			    if (FAILED(result))
+			    {
+			    	LOG_ERROR("Failed to resize swapchain target, %s.", d3d11_common::dxgi_error_to_string(result));
+			    	return false;
+			    }
+            }
+            else
+            {
+                LOG_ERROR("Failed to get a display mode");
+                return false;
+            }
 		}
 	
 		// Resize swapchain buffers
-		const UINT d3d11_flags = D3D11_Common::swap_chain::get_flags(D3D11_Common::swap_chain::validate_flags(m_rhi_device.get(), m_flags));
+		const UINT d3d11_flags = d3d11_common::swap_chain::get_flags(d3d11_common::swap_chain::validate_flags(m_rhi_device, m_flags));
 		auto result = swap_chain->ResizeBuffers(m_buffer_count, static_cast<UINT>(width), static_cast<UINT>(height), d3d11_format[m_format], d3d11_flags);
 		if (FAILED(result))
 		{
-			LOGF_ERROR("Failed to resize swapchain buffers, %s.", D3D11_Common::dxgi_error_to_string(result));
+			LOG_ERROR("Failed to resize swapchain buffers, %s.", d3d11_common::dxgi_error_to_string(result));
 			return false;
 		}
 
@@ -230,7 +244,7 @@ namespace Spartan
 		result = swap_chain->GetBuffer(0, IID_PPV_ARGS(&backbuffer));
 		if (FAILED(result))
 		{
-			LOGF_ERROR("Failed to get swapchain buffer, %s.", D3D11_Common::dxgi_error_to_string(result));
+			LOG_ERROR("Failed to get swapchain buffer, %s.", d3d11_common::dxgi_error_to_string(result));
 			return false;
 		}
 
@@ -239,16 +253,24 @@ namespace Spartan
 		safe_release(backbuffer);
 		if (FAILED(result))
 		{
-			LOGF_ERROR("Failed to create render target view, %s.", D3D11_Common::dxgi_error_to_string(result));
+			LOG_ERROR("Failed to create render target view, %s.", d3d11_common::dxgi_error_to_string(result));
 			return false;
 		}
-		m_render_target_view = static_cast<void*>(render_target_view);
+		m_resource_render_target_view = static_cast<void*>(render_target_view);
 
 		return true;
 	}
 
-	bool RHI_SwapChain::Present() const
-	{
+    bool RHI_SwapChain::AcquireNextImage()
+    {
+        return true;
+    }
+
+	bool RHI_SwapChain::Present()
+    {
+        if (!m_present)
+            return true;
+
 		if (!m_swap_chain_view)
 		{
 			LOG_ERROR_INVALID_INTERNALS();
@@ -256,16 +278,16 @@ namespace Spartan
 		}
 
         // Build flags
-		const bool tearing_allowed	= m_flags & Present_Immediate;
+		const bool tearing_allowed	= m_flags & RHI_Present_Immediate;
         const UINT sync_interval    = tearing_allowed ? 0 : 1; // sync interval can go up to 4, so this could be improved
 		const UINT flags			= (tearing_allowed && m_windowed) ? DXGI_PRESENT_ALLOW_TEARING : 0;	
 
         // Present
         auto ptr_swap_chain = static_cast<IDXGISwapChain*>(m_swap_chain_view);
-		auto result = ptr_swap_chain->Present(sync_interval, flags);
+        const auto result = ptr_swap_chain->Present(sync_interval, flags);
         if (FAILED(result))
         {
-            LOGF_ERROR("Failed to present, %s.", D3D11_Common::dxgi_error_to_string(result));
+            LOG_ERROR("Failed to present, %s.", d3d11_common::dxgi_error_to_string(result));
             return false;
         }
 

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,12 +21,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES =====================
-#include <memory>
+//= INCLUDES ===============
 #include "IconProvider.h"
 #include "ImGui_Extension.h"
-#include "FileSystem/FileSystem.h"
-//================================
+#include "Core/FileSystem.h"
+//==========================
 
 enum FileDialog_Type
 {
@@ -46,6 +45,114 @@ enum FileDialog_Filter
 	FileDialog_Filter_All,
 	FileDialog_Filter_Scene,
 	FileDialog_Filter_Model
+};
+
+// Keeps tracks of directory navigation
+class FileDialogNavigation
+{
+public:
+    bool Navigate(std::string directory, bool update_history = true)
+    {
+        if (!Spartan::FileSystem::IsDirectory(directory))
+            return false;
+
+        // If the directory ends with a slash, remove it (simplifies things below)
+        if (directory.back() == '/')
+        {
+            directory = directory.substr(0, directory.size() - 1);
+        }
+
+        // Don't re-navigate
+        if (m_path_current == directory)
+            return false;
+
+        // Update current path
+        m_path_current = directory;
+
+        // Update history
+        if (update_history)
+        {
+            m_path_history.emplace_back(m_path_current);
+            m_path_history_index++;
+        }
+
+        // Clear hierarchy
+        m_path_hierarchy.clear();
+        m_path_hierarchy_labels.clear();
+
+        // Is there a slash ?
+        std::size_t pos = m_path_current.find('/');
+
+        // If there are no slashes then there is no nesting (and we are done)
+        if (pos == std::string::npos)
+        {
+            m_path_hierarchy.emplace_back(m_path_current);
+        }
+        // If there is a slash, get the individual directories between slashes
+        else
+        {
+            std::size_t pos_previous = 0;
+            while (true)
+            {
+                // Save everything before the slash
+                m_path_hierarchy.emplace_back(m_path_current.substr(0, pos));
+
+                // Attempt to find a slash after the one we already found
+                pos_previous    = pos;
+                pos             = m_path_current.find('/', pos + 1);
+
+                // If there are no more slashes
+                if (pos == std::string::npos)
+                {
+                    // Save the complete path to this directory
+                    m_path_hierarchy.emplace_back(m_path_current);
+                    break;
+                }
+            }
+        }
+
+        // Create a proper looking label (to show in the editor) for each path
+        for (const auto& path : m_path_hierarchy)
+        {
+            pos = path.find('/');
+            if (pos == std::string::npos)
+            {
+                m_path_hierarchy_labels.emplace_back(path + " >");
+            }
+            else
+            {
+                m_path_hierarchy_labels.emplace_back(path.substr(path.find_last_of('/') + 1) + " >");
+            }
+        }
+
+        return true;
+    }
+
+    bool Backward()
+    {
+        if (m_path_history.empty() || (m_path_history_index - 1) < 0)
+            return false;
+
+        Navigate(m_path_history[--m_path_history_index], false);
+
+        return true;
+    }
+
+    bool Forward()
+    {
+        if (m_path_history.empty() || (m_path_history_index + 1) >= static_cast<int>(m_path_history.size()))
+            return false;
+
+        Navigate(m_path_history[++m_path_history_index], false);
+
+        return true;
+    }
+
+    std::string m_path_current;
+    std::vector<std::string> m_path_hierarchy;
+    std::vector<std::string> m_path_hierarchy_labels;
+    std::vector<std::string> m_path_history;
+    int m_path_history_index = -1;
 };
 
 class FileDialogItem
@@ -114,22 +221,37 @@ private:
 	void ItemContextMenu(FileDialogItem* item);
 
 	// Misc
-    bool DialogSetCurrentPath(const std::string& path);
     bool DialogUpdateFromDirectory(const std::string& path);
 	void EmptyAreaContextMenu();
 
-	FileDialog_Type m_type;
-	FileDialog_Operation m_operation;
-	FileDialog_Filter m_filter;
+    // Options
+    const bool m_drop_shadow    = true;
+    const float m_item_size_min = 50.0f;
+    const float m_item_size_max = 200.0f;
+    const Spartan::Math::Vector4 m_content_background_color = Spartan::Math::Vector4(0.0f, 0.0f, 0.0f, 50.0f);
 
-	std::string m_title;
-	std::string m_current_directory;
-	std::string m_input_box;
-	std::vector<FileDialogItem> m_items;
-    Spartan::Math::Vector2 m_item_size;
+    // Flags
 	bool m_is_window;
 	bool m_selection_made;
 	bool m_is_dirty;
+    bool m_is_hovering_item;    
+    bool m_is_hovering_window;
+    std::string m_title;
+    FileDialogNavigation m_navigation;
+    std::string m_input_box;
+    std::string m_hovered_item_path;
+    uint32_t m_displayed_item_count;
+
+    // Internal
+    mutable unsigned int m_context_menu_id;
+    mutable ImGuiEx::DragDropPayload m_drag_drop_payload;
+    float m_offset_bottom = 0.0f;
+    FileDialog_Type m_type;
+    FileDialog_Operation m_operation;
+    FileDialog_Filter m_filter;
+    std::vector<FileDialogItem> m_items;
+    Spartan::Math::Vector2 m_item_size;
+    ImGuiTextFilter m_search_filter;
 	Spartan::Context* m_context;
 
 	// Callbacks

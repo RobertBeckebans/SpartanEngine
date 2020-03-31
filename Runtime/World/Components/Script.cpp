@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,12 +19,13 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ===========================
+//= INCLUDES =====================
 #include "Script.h"			
 #include "../../Core/Context.h"
+#include "../../Core/FileSystem.h"
 #include "../../IO/FileStream.h"
-#include "../../FileSystem/FileSystem.h"
-//======================================
+#include "../Entity.h"
+//================================
 
 //= NAMESPACES =====
 using namespace std;
@@ -37,12 +38,7 @@ namespace Spartan
 
 	}
 
-	Script::~Script()
-	{
-
-	}
-
-	//= ICOMPONENT ==================================================================
+    //= ICOMPONENT ==================================================================
 	void Script::OnStart()
 	{
 		if (!m_scriptInstance)
@@ -86,7 +82,7 @@ namespace Spartan
 	{
 		// Instantiate the script
 		m_scriptInstance = make_shared<ScriptInstance>();
-		m_scriptInstance->Instantiate(filePath, GetEntity_PtrWeak(), GetContext()->GetSubsystem<Scripting>());
+		m_scriptInstance->Instantiate(filePath, GetEntity()->GetPtrShared(), GetContext()->GetSubsystem<Scripting>());
 
 		// Check if the script has been instantiated successfully.
 		if (!m_scriptInstance->IsInstantiated())
@@ -96,8 +92,8 @@ namespace Spartan
 		return true;
 	}
 
-	string Script::GetScriptPath()
-	{
+	string Script::GetScriptPath() const
+    {
 		return m_scriptInstance ? m_scriptInstance->GetScriptPath() : "";
 	}
 

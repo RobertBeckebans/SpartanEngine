@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -40,7 +40,7 @@ namespace Spartan::Math
 	{
 		m_start                 = start;
 		m_end                   = end;
-        Vector3 start_to_end    = (end - start);
+        const Vector3 start_to_end    = (end - start);
         m_length                = start_to_end.Length();
 		m_direction             = start_to_end.Normalized();
 	}
@@ -52,7 +52,7 @@ namespace Spartan::Math
 		const auto& entities = context->GetSubsystem<World>()->EntityGetAll();
 		for (const auto& entity : entities)
 		{
-			// Make sure there entity has renderable
+			// Make sure there entity has a renderable
 			if (!entity->HasComponent<Renderable>())
 				continue;
 
@@ -66,12 +66,11 @@ namespace Spartan::Math
 			if (distance == INFINITY)
 				continue;
 
-            auto& hit_position = m_start + distance * m_direction;
 			hits.emplace_back(
-                entity,          // Entity
-                hit_position,    // Position
-                distance,        // Distance
-                distance == 0.0f // Inside
+                entity,                             // Entity
+                m_start + distance * m_direction,   // Position
+                distance,                           // Distance
+                distance == 0.0f                    // Inside
             );
 		}
 
@@ -99,7 +98,7 @@ namespace Spartan::Math
 		// Check for intersecting in the X-direction
 		if (m_start.x < box.GetMin().x && m_direction.x > 0.0f)
 		{
-			auto x = (box.GetMin().x - m_start.x) / m_direction.x;
+            const auto x = (box.GetMin().x - m_start.x) / m_direction.x;
 			if (x < dist)
 			{
 				const auto point = m_start + x * m_direction;

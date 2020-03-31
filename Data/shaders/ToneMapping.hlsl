@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -97,6 +97,10 @@ float3 ToneMap(float3 color, float exposure = 1.0f)
     }
 	else if (g_toneMapping == 1) // ACES
 	{
+		// attempting to match contrast levels
+        color = pow(abs(color), 0.833f);
+        color *= 1.07f;
+
 		color = ACESFitted(color);
 	}
 	else if (g_toneMapping == 2) // REINHARD

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -29,6 +29,22 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 namespace Spartan
 {
 	class Context;
+    class Timer;
+
+    struct WindowData
+    {
+        void* handle                    = nullptr;
+        void* instance                  = nullptr;
+        uint32_t message                = 0;
+        float width                     = 0;
+        float height                    = 0;
+        uint32_t monitor_width          = 0;
+        uint32_t monitor_height         = 0;
+        uint32_t monitor_width_virtual  = 0; // multi-monitor setup
+        uint32_t monitor_height_virtual = 0; // multi-monitor setup
+        uint64_t wparam                 = 0;
+        int64_t lparam                  = 0;
+    };
 
 	enum Engine_Mode : uint32_t
 	{
@@ -39,14 +55,14 @@ namespace Spartan
 	class SPARTAN_CLASS Engine
 	{
 	public:
-		Engine(void* draw_handle, void* window_handle, void* window_instance, float window_width, float window_height);
+		Engine(const WindowData& window_data);
 		~Engine();
 
-		// Performs one or more simulation cycles
-		void Tick();
+		// Performs a simulation cycle
+		void Tick() const;
 
-		//  Flag helpers
-		auto EngineMode_GetAll()					        { return m_flags; }
+		//  Flags
+		auto EngineMode_GetAll() const { return m_flags; }
 		void EngineMode_SetAll(const uint32_t flags)	    { m_flags = flags; }
 		void EngineMode_Enable(const Engine_Mode flag)	    { m_flags |= flag; }
 		void EngineMode_Disable(const Engine_Mode flag)	    { m_flags &= ~flag; }
@@ -54,23 +70,15 @@ namespace Spartan
 		bool EngineMode_IsSet(const Engine_Mode flag) const	{ return m_flags & flag; }
 
         // Window
-        const auto& GetWindowHandle()                   { return m_window_handle; }
-        const auto& GetWindowInstance()                 { return m_window_instance; }
-        const auto GetWindowWidth()                     { return m_window_width; }
-        const auto GetWindowHeight()                    { return m_window_height; }
-        const auto GetWindowMessage()                   { return m_window_message; }
-        void SetWindowMessage(uint32_t window_message)  { m_window_message = window_message; }
+        const auto& GetWindowData() const { return m_window_data; }
+        void SetWindowData(WindowData& window_data);
 
         auto GetContext() const { return m_context.get(); }
 
 	private:
-        void* m_draw_handle         = nullptr;
-        void* m_window_handle       = nullptr;
-        void* m_window_instance     = nullptr;
-        uint32_t m_window_message   = 0;
-        float m_window_width        = 0;
-        float m_window_height       = 0;
-        uint32_t m_flags            = 0;
+        WindowData m_window_data;
+        uint32_t m_flags        = 0;
+        Timer* m_timer          = nullptr;
 		std::shared_ptr<Context> m_context;
 	};
 }

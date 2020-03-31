@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -28,7 +28,7 @@ Pixel_PosColor mainVS(Vertex_PosColor input)
     Pixel_PosColor output;
     	
     input.position.w 	= 1.0f;
-    output.position 	= mul(input.position, g_mvp);
+    output.position 	= mul(input.position, g_viewProjectionUnjittered);
 	output.color 		= input.color;
 	
 	return output;

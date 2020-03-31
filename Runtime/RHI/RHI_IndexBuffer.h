@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,14 +21,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ==================
+//= INCLUDES ==========
 #include <vector>
-#include "../Core/Spartan_Object.h"
-//=============================
+#include "RHI_Object.h"
+//=====================
 
 namespace Spartan
 {
-	class RHI_IndexBuffer : public Spartan_Object
+	class RHI_IndexBuffer : public RHI_Object
 	{
 	public:
 		RHI_IndexBuffer(const std::shared_ptr<RHI_Device>& rhi_device)
@@ -41,52 +41,49 @@ namespace Spartan
 		template<typename T>
 		bool Create(const std::vector<T>& indices)
 		{
-			m_is_dynamic	= false;
 			m_stride        = sizeof(T);
 			m_index_count	= static_cast<uint32_t>(indices.size());
-			m_size          = static_cast<uint64_t>(m_stride * m_index_count);
+            m_size_gpu      = static_cast<uint64_t>(m_stride * m_index_count);
 			return _Create(static_cast<const void*>(indices.data()));
 		}
 
 		template<typename T>
 		bool Create(const T* indices, const uint32_t index_count)
 		{
-			m_is_dynamic	= false;
 			m_stride        = sizeof(T);
 			m_index_count	= index_count;
-			m_size          = static_cast<uint64_t>(m_stride * m_index_count);
+			m_size_gpu      = static_cast<uint64_t>(m_stride * m_index_count);
 			return _Create(static_cast<const void*>(indices));
 		}
 
 		template<typename T>
 		bool CreateDynamic(const uint32_t index_count)
 		{
-			m_is_dynamic	= true;
 			m_stride        = sizeof(T);
 			m_index_count	= index_count;
-			m_size          = static_cast<uint64_t>(m_stride * m_index_count);
+            m_size_gpu      = static_cast<uint64_t>(m_stride * m_index_count);
 			return _Create(nullptr);
 		}
 
 		void* Map() const;
 		bool Unmap() const;
+        bool Flush() const;
 
-		auto GetResource()		const { return m_buffer; }
-		auto GetSize()			const { return m_size; }
-		auto GetIndexCount()	const { return m_index_count; }
-		auto Is16Bit()			const { return sizeof(uint16_t) == m_stride; }
-		auto Is32Bit()			const { return sizeof(uint32_t) == m_stride; }
+        void* GetResource()		    const { return m_buffer; }
+        uint32_t GetIndexCount()	const { return m_index_count; }
+		bool Is16Bit()			    const { return sizeof(uint16_t) == m_stride; }
+        bool Is32Bit()			    const { return sizeof(uint32_t) == m_stride; }
 
 	protected:
 		bool _Create(const void* indices);
 
-		bool m_is_dynamic			= false;
 		uint32_t m_stride		= 0;
 		uint32_t m_index_count	= 0;
 		std::shared_ptr<RHI_Device> m_rhi_device;
 
 		// API
 		void* m_buffer			= nullptr;
-		void* m_buffer_memory	= nullptr;		
+		void* m_buffer_memory	= nullptr;
+        bool m_mappable         = false;
 	};
 }

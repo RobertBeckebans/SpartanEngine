@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -43,6 +43,7 @@ Note: Currently, this is a blocking event system
 enum Event_Type
 {
 	Event_Frame_End,		        // A frame ends
+    Event_Window_Data,              // The window has a message for proccesing
 	Event_World_Save,		        // The world must be saved to file
 	Event_World_Saved,		        // The world finished saving to file
 	Event_World_Load,		        // The world must be loaded from file
@@ -51,7 +52,8 @@ enum Event_Type
 	Event_World_Resolve_Pending,	// The world should resolve
 	Event_World_Resolve_Complete,	// The world has finished resolving
 	Event_World_Stop,		        // The world should stop ticking
-	Event_World_Start		        // The world should start ticking
+	Event_World_Start,		        // The world should start ticking
+    Event_Frame_Resolution_Changed
 };
 
 //= MACROS ====================================================================================================

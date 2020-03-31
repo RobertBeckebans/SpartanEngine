@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2019 Panos Karabelas
+Copyright(c) 2016-2020 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,8 +21,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 //= INCLUDES =================
 #include "Widget_Assets.h"
-#include "../FileDialog.h"
 #include "Widget_Properties.h"
+#include "Rendering\Model.h"
+#include "../FileDialog.h"
 //============================
 
 //= NAMESPACES ==========
@@ -39,10 +40,10 @@ namespace Widget_Assets_Statics
 
 Widget_Assets::Widget_Assets(Context* context) : Widget(context)
 {
-	m_title = "Assets";
-	m_fileDialogView = make_unique<FileDialog>(m_context, false, FileDialog_Type_Browser, FileDialog_Op_Load, FileDialog_Filter_All);
-	m_fileDialogLoad = make_unique<FileDialog>(m_context, true, FileDialog_Type_FileSelection, FileDialog_Op_Load, FileDialog_Filter_Model);
-	m_flags |= ImGuiWindowFlags_NoScrollbar;
+	m_title             = "Assets";
+	m_fileDialogView    = make_unique<FileDialog>(m_context, false, FileDialog_Type_Browser,        FileDialog_Op_Load, FileDialog_Filter_All);
+	m_fileDialogLoad    = make_unique<FileDialog>(m_context, true,  FileDialog_Type_FileSelection,  FileDialog_Op_Load, FileDialog_Filter_Model);
+	m_flags             |= ImGuiWindowFlags_NoScrollbar;
 
 	// Just clicked, not selected (double clicked, end of dialog)
 	m_fileDialogView->SetCallbackOnItemClicked([this](const string& str) { OnPathClicked(str); });
@@ -72,8 +73,11 @@ void Widget_Assets::Tick()
 	}
 }
 
-void Widget_Assets::OnPathClicked(const std::string& path)
+void Widget_Assets::OnPathClicked(const std::string& path) const
 {
+    if (!FileSystem::IsFile(path))
+        return;
+
 	if (FileSystem::IsEngineMaterialFile(path))
 	{
 		const auto material = m_context->GetSubsystem<ResourceCache>()->Load<Material>(path);

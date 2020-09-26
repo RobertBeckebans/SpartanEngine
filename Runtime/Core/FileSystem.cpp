@@ -43,9 +43,11 @@ namespace Spartan
             return true;
 
         // Check if it's made out of whitespace characters
+        const locale loc;
+
         for (char _char : var)
         {
-            if (!std::isspace(_char))
+            if (!std::isspace(_char, loc))
                 return false;
         }
 
@@ -57,9 +59,11 @@ namespace Spartan
         if (IsEmptyOrWhitespace(var))
             return false;
 
+        const locale loc;
+
         for (char _char : var)
         {
-            if (!std::isalnum(_char))
+            if (!std::isalnum(_char, loc))
                 return false;
         }
 

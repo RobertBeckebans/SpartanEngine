@@ -19,15 +19,11 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= IMPLEMENTATION ===============
-#include "../RHI_Implementation.h"
-#ifdef API_GRAPHICS_D3D11
-//================================
-
 //= INCLUDES ======================
+#include "Spartan.h"
+#include "../RHI_Implementation.h"
 #include "../RHI_RasterizerState.h"
 #include "../RHI_Device.h"
-#include "../../Logging/Log.h"
 //=================================
 
 //= NAMESPACES =====
@@ -36,71 +32,64 @@ using namespace std;
 
 namespace Spartan
 {
-	RHI_RasterizerState::RHI_RasterizerState
-	(
-		const shared_ptr<RHI_Device>& rhi_device,
-		const RHI_Cull_Mode cull_mode,
-		const RHI_Fill_Mode fill_mode,
-		const bool depth_clip_enabled,
-		const bool scissor_enabled,
-		const bool multi_sample_enabled,
-		const bool antialised_line_enabled,
-        const float line_width /*= 1.0f */)
-	{
-		if (!rhi_device)
-		{
-			LOG_ERROR_INVALID_INTERNALS();
-			return;
-		}
+    RHI_RasterizerState::RHI_RasterizerState
+    (
+        const shared_ptr<RHI_Device>& rhi_device,
+        const RHI_Cull_Mode cull_mode,
+        const RHI_Fill_Mode fill_mode,
+        const bool depth_clip_enabled,
+        const bool scissor_enabled,
+        const bool multi_sample_enabled,
+        const bool antialised_line_enabled,
+        const float depth_bias              /*= 0.0f */,
+        const float depth_bias_clamp        /*= 0.0f */,
+        const float depth_bias_slope_scaled /*= 0.0f */,
+        const float line_width              /*= 1.0f */)
+    {
+        if (!rhi_device)
+        {
+            LOG_ERROR_INVALID_INTERNALS();
+            return;
+        }
+    
+        if (!rhi_device->GetContextRhi()->device)
+        {
+            LOG_ERROR_INVALID_INTERNALS();
+            return;
+        }
 
-		if (!rhi_device->GetContextRhi()->device)
-		{
-			LOG_ERROR_INVALID_INTERNALS();
-			return;
-		}
-
-		// Save properties
-		m_cull_mode					= cull_mode;
-		m_fill_mode					= fill_mode;
-		m_depth_clip_enabled		= depth_clip_enabled;
-		m_scissor_enabled			= scissor_enabled;
-		m_multi_sample_enabled		= multi_sample_enabled;
-		m_antialised_line_enabled	= antialised_line_enabled;
+        // Save properties
+        m_cull_mode                 = cull_mode;
+        m_fill_mode                 = fill_mode;
+        m_depth_clip_enabled        = depth_clip_enabled;
+        m_scissor_enabled           = scissor_enabled;
+        m_multi_sample_enabled      = multi_sample_enabled;
+        m_antialised_line_enabled   = antialised_line_enabled;
+        m_depth_bias                = depth_bias;
+        m_depth_bias_clamp          = depth_bias_clamp;
+        m_depth_bias_slope_scaled   = depth_bias_slope_scaled;
         m_line_width                = line_width;
 
-		// Create rasterizer description
-		D3D11_RASTERIZER_DESC desc;
-		desc.CullMode				= d3d11_cull_mode[cull_mode];
-		desc.FillMode				= d3d11_polygon_mode[fill_mode];	
-		desc.FrontCounterClockwise	= FALSE;
-		desc.DepthBias				= 0;
-		desc.DepthBiasClamp			= 0.0f;
-		desc.SlopeScaledDepthBias	= 0.0f;
-		desc.DepthClipEnable		= depth_clip_enabled;	
-		desc.MultisampleEnable		= multi_sample_enabled;
-		desc.AntialiasedLineEnable	= antialised_line_enabled;
-		desc.ScissorEnable			= scissor_enabled;
+        // Create rasterizer description
+        D3D11_RASTERIZER_DESC desc  = {};
+        desc.CullMode               = d3d11_cull_mode[cull_mode];
+        desc.FillMode               = d3d11_polygon_mode[fill_mode];    
+        desc.FrontCounterClockwise  = FALSE;
+        desc.DepthBias              = static_cast<UINT>(Math::Helper::Floor(depth_bias * (float)(1 << 24)));
+        desc.DepthBiasClamp         = depth_bias_clamp;
+        desc.SlopeScaledDepthBias   = depth_bias_slope_scaled;
+        desc.DepthClipEnable        = depth_clip_enabled;    
+        desc.MultisampleEnable      = multi_sample_enabled;
+        desc.AntialiasedLineEnable  = antialised_line_enabled;
+        desc.ScissorEnable          = scissor_enabled;
 
-		// Create rasterizer state
-		auto rasterizer_state	= static_cast<ID3D11RasterizerState*>(m_buffer);
-		const auto result		= rhi_device->GetContextRhi()->device->CreateRasterizerState(&desc, &rasterizer_state);
-	
-		// Handle result
-		if (SUCCEEDED(result))
-		{
-			m_buffer		= static_cast<void*>(rasterizer_state);
-			m_initialized	= true;
-		}
-		else
-		{
-			LOG_ERROR("Failed to create the rasterizer state, %s.", d3d11_common::dxgi_error_to_string(result));
-			m_initialized = false;
-		}
-	}
+        // Create rasterizer state
+        auto rasterizer_state    = static_cast<ID3D11RasterizerState*>(m_buffer);
+        m_initialized = d3d11_utility::error_check(rhi_device->GetContextRhi()->device->CreateRasterizerState(&desc, reinterpret_cast<ID3D11RasterizerState**>(&m_buffer)));
+    }
 
-	RHI_RasterizerState::~RHI_RasterizerState()
-	{
-        safe_release(*reinterpret_cast<ID3D11RasterizerState**>(&m_buffer));
-	}
+    RHI_RasterizerState::~RHI_RasterizerState()
+    {
+        d3d11_utility::release(*reinterpret_cast<ID3D11RasterizerState**>(&m_buffer));
+    }
 }
-#endif

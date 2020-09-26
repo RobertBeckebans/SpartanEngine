@@ -19,12 +19,9 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= IMPLEMENTATION ===============
-#ifdef API_GRAPHICS_VULKAN
-#include "../RHI_Implementation.h"
-//================================
-
 //= INCLUDES ==========================
+#include "Spartan.h"
+#include "../RHI_Implementation.h"
 #include "../RHI_DescriptorSetLayout.h"
 #include "../RHI_DescriptorCache.h"
 //=====================================
@@ -35,6 +32,25 @@ using namespace std;
 
 namespace Spartan
 {
+    static VkDescriptorType GetDescriptorType(const RHI_Descriptor& descriptor)
+    {
+        if (descriptor.type == RHI_Descriptor_ConstantBuffer)
+        {
+            return descriptor.is_dynamic_constant_buffer ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        }
+        else if (descriptor.type == RHI_Descriptor_Texture)
+        {
+            return descriptor.is_storage ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE : VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        }
+        else if (descriptor.type == RHI_Descriptor_Sampler)
+        {
+            return VK_DESCRIPTOR_TYPE_SAMPLER;
+        }
+
+        LOG_ERROR("Invalid descriptor type");
+        return VK_DESCRIPTOR_TYPE_MAX_ENUM;
+    }
+
     RHI_DescriptorSetLayout::~RHI_DescriptorSetLayout()
     {
         if (m_descriptor_set_layout)
@@ -56,11 +72,11 @@ namespace Spartan
             allocate_info.descriptorSetCount            = 1;
             allocate_info.pSetLayouts                   = reinterpret_cast<VkDescriptorSetLayout*>(&m_descriptor_set_layout);
 
-            // Allocate		
-            if (!vulkan_common::error::check(vkAllocateDescriptorSets(m_rhi_device->GetContextRhi()->device, &allocate_info, reinterpret_cast<VkDescriptorSet*>(&descriptor_set))))
+            // Allocate        
+            if (!vulkan_utility::error::check(vkAllocateDescriptorSets(m_rhi_device->GetContextRhi()->device, &allocate_info, reinterpret_cast<VkDescriptorSet*>(&descriptor_set))))
                 return nullptr;
 
-            vulkan_common::debug::set_descriptor_set_name(m_rhi_device->GetContextRhi()->device, *reinterpret_cast<VkDescriptorSet*>(&descriptor_set), m_name.c_str());
+            vulkan_utility::debug::set_name(*reinterpret_cast<VkDescriptorSet*>(&descriptor_set), m_name.c_str());
         }
 
         UpdateDescriptorSet(descriptor_set, m_descriptors);
@@ -76,80 +92,86 @@ namespace Spartan
         if (!descriptor_set)
             return;
 
-        const uint32_t descriptor_count = static_cast<uint32_t>(descriptors.size());
-        
-        vector<VkDescriptorImageInfo> image_infos;
-        image_infos.reserve(descriptor_count);
-        
-        vector<VkDescriptorBufferInfo> buffer_infos;
-        buffer_infos.reserve(descriptor_count);
-        
-        vector<VkWriteDescriptorSet> write_descriptor_sets;
-        write_descriptor_sets.reserve(descriptor_count);
-        
+        static const uint8_t descriptors_max = 255;
+        array<VkDescriptorImageInfo,    descriptors_max> image_infos;
+        array<VkDescriptorBufferInfo,   descriptors_max> buffer_infos;
+        array<VkWriteDescriptorSet,     descriptors_max> write_descriptor_sets;
+        uint8_t i = 0;
+
         for (const RHI_Descriptor& descriptor : descriptors)
         {
             // Ignore null resources (this is legal, as a render pass can choose to not use one or more resources)
             if (!descriptor.resource)
                 continue;
-        
-            // Texture or Sampler
-            image_infos.push_back
-            ({
-                descriptor.type == RHI_Descriptor_Sampler ? static_cast<VkSampler>(descriptor.resource)     : nullptr,                                  // sampler
-                descriptor.type == RHI_Descriptor_Texture ? static_cast<VkImageView>(descriptor.resource)   : nullptr,                                  // imageView
-                descriptor.type == RHI_Descriptor_Texture && descriptor.resource ? vulkan_image_layout[descriptor.layout] : VK_IMAGE_LAYOUT_UNDEFINED   // imageLayout
-            });
-        
+
+            // Sampler
+            if (descriptor.type == RHI_Descriptor_Sampler)
+            {
+                image_infos[i].sampler      = static_cast<VkSampler>(descriptor.resource);
+                image_infos[i].imageView    = nullptr;
+                image_infos[i].imageLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+            }
+            // Sampled/Storage texture
+            else if (descriptor.type == RHI_Descriptor_Texture)
+            {
+                image_infos[i].sampler      = nullptr;
+                image_infos[i].imageView    = static_cast<VkImageView>(descriptor.resource);
+                image_infos[i].imageLayout  = descriptor.resource ? vulkan_image_layout[descriptor.layout] : VK_IMAGE_LAYOUT_UNDEFINED;
+            }
             // Constant/Uniform buffer
-            const bool is_constant_buffer = descriptor.type == RHI_Descriptor_ConstantBuffer || descriptor.type == RHI_Descriptor_ConstantBufferDynamic;
-            buffer_infos.push_back
-            ({
-                is_constant_buffer ? static_cast<VkBuffer>(descriptor.resource) : nullptr,  // buffer
-                is_constant_buffer ? descriptor.offset  : 0,                                // offset
-                is_constant_buffer ? descriptor.range   : 0                                 // range
-            });
-        
-            write_descriptor_sets.push_back
-            ({
-                VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,	        // sType
-                nullptr,								        // pNext
-                static_cast<VkDescriptorSet>(descriptor_set),   // dstSet
-                descriptor.slot,				                // dstBinding
-                0,									            // dstArrayElement
-                1,									            // descriptorCount
-                vulkan_descriptor_type[descriptor.type],	    // descriptorType
-                &image_infos.back(),                            // pImageInfo 
-                &buffer_infos.back(),                           // pBufferInfo
-                nullptr									        // pTexelBufferView
-            });
+            else if (descriptor.type == RHI_Descriptor_ConstantBuffer)
+            {
+                buffer_infos[i].buffer  = static_cast<VkBuffer>(descriptor.resource);
+                buffer_infos[i].offset  = descriptor.offset;
+                buffer_infos[i].range   = descriptor.range;
+            }
+
+            // Write descriptor set
+            write_descriptor_sets[i].sType             = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            write_descriptor_sets[i].pNext             = nullptr;
+            write_descriptor_sets[i].dstSet            = static_cast<VkDescriptorSet>(descriptor_set);
+            write_descriptor_sets[i].dstBinding        = descriptor.slot;
+            write_descriptor_sets[i].dstArrayElement   = 0;
+            write_descriptor_sets[i].descriptorCount   = 1;
+            write_descriptor_sets[i].descriptorType    = GetDescriptorType(descriptor);
+            write_descriptor_sets[i].pImageInfo        = &image_infos[i];
+            write_descriptor_sets[i].pBufferInfo       = &buffer_infos[i];
+            write_descriptor_sets[i].pTexelBufferView  = nullptr;
+
+            i++;
         }
-        
-        vkUpdateDescriptorSets(m_rhi_device->GetContextRhi()->device, static_cast<uint32_t>(write_descriptor_sets.size()), write_descriptor_sets.data(), 0, nullptr);
+
+        vkUpdateDescriptorSets(
+            m_rhi_device->GetContextRhi()->device,  // device
+            static_cast<uint32_t>(i),               // descriptorWriteCount
+            write_descriptor_sets.data(),           // pDescriptorWrites
+            0,                                      // descriptorCopyCount
+            nullptr                                 // pDescriptorCopies
+        );
     }
 
     void* RHI_DescriptorSetLayout::CreateDescriptorSetLayout(const vector<RHI_Descriptor>& descriptors)
     {
         // Layout bindings
-        vector<VkDescriptorSetLayoutBinding> layout_bindings;
-        {
-            for (const RHI_Descriptor& descriptor : descriptors)
-            {
-                // Stage flags
-                VkShaderStageFlags stage_flags = 0;
-                stage_flags |= (descriptor.stage & Shader_Vertex)   ? VK_SHADER_STAGE_VERTEX_BIT    : 0;
-                stage_flags |= (descriptor.stage & Shader_Pixel)    ? VK_SHADER_STAGE_FRAGMENT_BIT  : 0;
-                stage_flags |= (descriptor.stage & Shader_Compute)  ? VK_SHADER_STAGE_COMPUTE_BIT   : 0;
+        static const uint8_t descriptors_max = 255;
+        array<VkDescriptorSetLayoutBinding, descriptors_max> layout_bindings;
+        uint8_t i = 0;
 
-                layout_bindings.push_back
-                ({
-                    descriptor.slot,							// binding
-                    vulkan_descriptor_type[descriptor.type],	// descriptorType
-                    1,										    // descriptorCount
-                    stage_flags,							    // stageFlags
-                    nullptr									    // pImmutableSamplers
-                    });
-            }
+        for (const RHI_Descriptor& descriptor : descriptors)
+        {
+            // Stage flags
+            VkShaderStageFlags stage_flags = 0;
+            stage_flags |= (descriptor.stage & RHI_Shader_Vertex)   ? VK_SHADER_STAGE_VERTEX_BIT    : 0;
+            stage_flags |= (descriptor.stage & RHI_Shader_Pixel)    ? VK_SHADER_STAGE_FRAGMENT_BIT  : 0;
+            stage_flags |= (descriptor.stage & RHI_Shader_Compute)  ? VK_SHADER_STAGE_COMPUTE_BIT   : 0;
+        
+            layout_bindings[i].binding              = descriptor.slot;
+            layout_bindings[i].descriptorType       = GetDescriptorType(descriptor);
+            layout_bindings[i].descriptorCount      = 1;
+            layout_bindings[i].stageFlags           = stage_flags;
+            layout_bindings[i].pImmutableSamplers   = nullptr;
+        
+            i++;
         }
 
         // Create info
@@ -157,17 +179,16 @@ namespace Spartan
         create_info.sType                           = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         create_info.flags                           = 0;
         create_info.pNext                           = nullptr;
-        create_info.bindingCount                    = static_cast<uint32_t>(layout_bindings.size());
+        create_info.bindingCount                    = static_cast<uint32_t>(i);
         create_info.pBindings                       = layout_bindings.data();
 
         // Descriptor set layout
         void* descriptor_set_layout = nullptr;
-        if (!vulkan_common::error::check(vkCreateDescriptorSetLayout(m_rhi_device->GetContextRhi()->device, &create_info, nullptr, reinterpret_cast<VkDescriptorSetLayout*>(&descriptor_set_layout))))
+        if (!vulkan_utility::error::check(vkCreateDescriptorSetLayout(m_rhi_device->GetContextRhi()->device, &create_info, nullptr, reinterpret_cast<VkDescriptorSetLayout*>(&descriptor_set_layout))))
             return false;
 
-        vulkan_common::debug::set_descriptor_set_layout_name(m_rhi_device->GetContextRhi()->device, static_cast<VkDescriptorSetLayout>(descriptor_set_layout), m_name.c_str());
+        vulkan_utility::debug::set_name(static_cast<VkDescriptorSetLayout>(descriptor_set_layout), m_name.c_str());
 
         return descriptor_set_layout;
     }
 }
-#endif

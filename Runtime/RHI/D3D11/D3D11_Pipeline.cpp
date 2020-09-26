@@ -19,14 +19,11 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= IMPLEMENTATION ===============
+//= INCLUDES =====================
+#include "Spartan.h"
 #include "../RHI_Implementation.h"
-#ifdef API_GRAPHICS_D3D11
-//================================
-
-//= INCLUDES ===============
 #include "../RHI_Pipeline.h"
-//==========================
+//================================
 
 //= NAMESPACES =====
 using namespace std;
@@ -36,10 +33,9 @@ namespace Spartan
 {
     RHI_Pipeline::RHI_Pipeline(const RHI_Device* rhi_device, RHI_PipelineState& pipeline_state, void* descriptor_set_layout)
     {
-		m_rhi_device	= rhi_device;
-		m_state			= pipeline_state;
-	}
+        m_rhi_device    = rhi_device;
+        m_state            = pipeline_state;
+    }
 
-	RHI_Pipeline::~RHI_Pipeline() = default;
+    RHI_Pipeline::~RHI_Pipeline() = default;
 }
-#endif

@@ -21,23 +21,23 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES =============
+//= INCLUDES =============================
 #include "Widget.h"
 #include <memory>
-#include "..\FileDialog.h"
-//========================
+#include "../WidgetsDeferred/FileDialog.h"
+//========================================
 
 namespace Spartan { class Context; }
 
 class Widget_MenuBar : public Widget
 {
 public:
-	Widget_MenuBar(Spartan::Context* context);
-	void Tick() override;
+    Widget_MenuBar(Editor* editor);
+    void Tick() override;
 
 private:
-	void ShowFileDialog() const;
-	void ShowAboutWindow() const;
+    void ShowFileDialog() const;
+    void ShowAboutWindow() const;
 
-	std::unique_ptr<FileDialog> m_fileDialog;
+    std::unique_ptr<FileDialog> m_fileDialog;
 };

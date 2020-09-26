@@ -19,14 +19,15 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES =======================
-#include "../Input_Implementation.h"
+//= INCLUDES =========================
+#include "Spartan.h"
 #include "../Input.h"
-#include "../../Core/EventSystem.h"
-#include "../../Core/Context.h"
-#include "../../Core/Engine.h"
-#include <sstream>
-//==================================
+#ifdef API_INPUT_WINDOWS
+    #pragma comment(lib, "XInput.lib")
+    #include <windows.h>
+    #include <xinput.h>
+#endif
+//====================================
 
 //= NAMESPACES ===============
 using namespace std;
@@ -35,13 +36,13 @@ using namespace Spartan::Math;
 
 namespace Spartan
 {
-	XINPUT_STATE	g_gamepad;
-    uint32_t		g_gamepad_num = 0;
+    XINPUT_STATE    g_gamepad;
+    uint32_t        g_gamepad_num = 0;
 
-	Input::Input(Context* context) : ISubsystem(context)
-	{
+    Input::Input(Context* context) : ISubsystem(context)
+    {
         const WindowData& window_data   = context->m_engine->GetWindowData();
-		const auto window_handle	    = static_cast<HWND>(window_data.handle);
+        const auto window_handle        = static_cast<HWND>(window_data.handle);
 
         if (!window_handle)
         {
@@ -65,8 +66,8 @@ namespace Spartan
             RegisterRawInputDevices(Rid, 1, sizeof(Rid[0]));
         }
 
-        SUBSCRIBE_TO_EVENT(Event_Window_Data, EVENT_HANDLER(OnWindowData));
-	}
+        SUBSCRIBE_TO_EVENT(EventType::WindowData, EVENT_HANDLER(OnWindowData));
+    }
 
     void Input::OnWindowData()
     {
@@ -80,7 +81,7 @@ namespace Spartan
         }
 
         const WindowData& window_data   = m_context->m_engine->GetWindowData();
-        const HWND window_handle              = static_cast<HWND>(window_data.handle);
+        const HWND window_handle        = static_cast<HWND>(window_data.handle);
 
         // Mouse
         {
@@ -116,9 +117,7 @@ namespace Spartan
 
             // Wheel
             {
-                const int wheel_delta     = ::GetScrollPos(window_handle, SB_VERT);
-                m_mouse_wheel_delta = static_cast<float>(wheel_delta - m_mouse_wheel);
-                m_mouse_wheel       = wheel_delta;
+                m_mouse_wheel_delta = (float)GET_WHEEL_DELTA_WPARAM(window_data.wparam) / (float)WHEEL_DELTA;
             }
         }
 
@@ -225,8 +224,23 @@ namespace Spartan
         m_is_new_frame = false;
     }
 
-	void Input::Tick(float delta_time)
-	{
+    void Input::SetMousePosition(const Math::Vector2& position)
+    {
+        const WindowData& window_data   = m_context->m_engine->GetWindowData();
+        const HWND window_handle        = static_cast<HWND>(window_data.handle);
+
+        if (window_handle == ::GetActiveWindow())
+        {
+            POINT mouse_screen_pos = POINT{ static_cast<LONG>(position.x), static_cast<LONG>(position.y) };
+            if (::ClientToScreen(window_handle, &mouse_screen_pos))
+            {
+                ::SetCursorPos(mouse_screen_pos.x, mouse_screen_pos.y);
+            }
+        }
+    }
+
+    void Input::Tick(float delta_time)
+    {
         // Check for new device
         if (m_check_for_new_device)
         {
@@ -246,61 +260,61 @@ namespace Spartan
             m_check_for_new_device = false;
         }
 
-		if (m_gamepad_connected)
-		{
-			m_keys[start_index_gamepad]			= g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP;
-			m_keys[start_index_gamepad + 1]		= g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
-			m_keys[start_index_gamepad + 2]		= g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
-			m_keys[start_index_gamepad + 3]		= g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
-			m_keys[start_index_gamepad + 4]		= g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_A;
-			m_keys[start_index_gamepad + 5]		= g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_B;
-			m_keys[start_index_gamepad + 6]		= g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_X;
-			m_keys[start_index_gamepad + 7]		= g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_Y;
-			m_keys[start_index_gamepad + 6]		= g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_START;
-			m_keys[start_index_gamepad + 7]		= g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_BACK;
-			m_keys[start_index_gamepad + 8]		= g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB;
-			m_keys[start_index_gamepad + 9]		= g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB;
-			m_keys[start_index_gamepad + 10]	= g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
-			m_keys[start_index_gamepad + 11]	= g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
+        if (m_gamepad_connected)
+        {
+            m_keys[start_index_gamepad]         = g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP;
+            m_keys[start_index_gamepad + 1]     = g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
+            m_keys[start_index_gamepad + 2]     = g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
+            m_keys[start_index_gamepad + 3]     = g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
+            m_keys[start_index_gamepad + 4]     = g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_A;
+            m_keys[start_index_gamepad + 5]     = g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_B;
+            m_keys[start_index_gamepad + 6]     = g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_X;
+            m_keys[start_index_gamepad + 7]     = g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_Y;
+            m_keys[start_index_gamepad + 6]     = g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_START;
+            m_keys[start_index_gamepad + 7]     = g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_BACK;
+            m_keys[start_index_gamepad + 8]     = g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB;
+            m_keys[start_index_gamepad + 9]     = g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB;
+            m_keys[start_index_gamepad + 10]    = g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
+            m_keys[start_index_gamepad + 11]    = g_gamepad.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
 
-			m_gamepad_trigger_left	= static_cast<float>(g_gamepad.Gamepad.bLeftTrigger);
-			m_gamepad_trigger_right	= static_cast<float>(g_gamepad.Gamepad.bRightTrigger);
-			m_gamepad_thumb_left.x	= static_cast<float>(g_gamepad.Gamepad.sThumbLX);
-			m_gamepad_thumb_left.y	= static_cast<float>(g_gamepad.Gamepad.sThumbLY);
-			m_gamepad_thumb_right.x	= static_cast<float>(g_gamepad.Gamepad.sThumbRX);
-			m_gamepad_thumb_right.y	= static_cast<float>(g_gamepad.Gamepad.sThumbRY);
+            m_gamepad_trigger_left  = static_cast<float>(g_gamepad.Gamepad.bLeftTrigger);
+            m_gamepad_trigger_right = static_cast<float>(g_gamepad.Gamepad.bRightTrigger);
+            m_gamepad_thumb_left.x  = static_cast<float>(g_gamepad.Gamepad.sThumbLX);
+            m_gamepad_thumb_left.y  = static_cast<float>(g_gamepad.Gamepad.sThumbLY);
+            m_gamepad_thumb_right.x = static_cast<float>(g_gamepad.Gamepad.sThumbRX);
+            m_gamepad_thumb_right.y = static_cast<float>(g_gamepad.Gamepad.sThumbRY);
 
-			if (m_gamepad_trigger_left != 0)	m_gamepad_trigger_left	/= 255.0f;	// Convert [0, 255] to [0, 1]
-			if (m_gamepad_trigger_right != 0)	m_gamepad_trigger_right	/= 255.0f;	// Convert [0, 255] to [0, 1]
-			if (m_gamepad_thumb_left.x != 0)	m_gamepad_thumb_left.x	= m_gamepad_thumb_left.x	< 0 ? m_gamepad_thumb_left.x	/ 32768.0f : m_gamepad_thumb_left.x		/ 32767.0f; // Convert [-32768, 32767] to [-1, 1]
-			if (m_gamepad_thumb_left.y != 0)	m_gamepad_thumb_left.y	= m_gamepad_thumb_left.y	< 0 ? m_gamepad_thumb_left.y	/ 32768.0f : m_gamepad_thumb_left.y		/ 32767.0f; // Convert [-32768, 32767] to [-1, 1]
-			if (m_gamepad_thumb_right.x != 0)	m_gamepad_thumb_right.x = m_gamepad_thumb_right.x	< 0 ? m_gamepad_thumb_right.x	/ 32768.0f : m_gamepad_thumb_right.x	/ 32767.0f; // Convert [-32768, 32767] to [-1, 1]
-			if (m_gamepad_thumb_right.y != 0)	m_gamepad_thumb_right.y = m_gamepad_thumb_right.y	< 0 ? m_gamepad_thumb_right.y	/ 32768.0f : m_gamepad_thumb_right.y	/ 32767.0f; // Convert [-32768, 32767] to [-1, 1]
-		}
-		else
-		{
-			for (auto i = start_index_gamepad; i <= start_index_gamepad + 11; i++)
-			{
-				m_keys[i] = false;
-			}
-		}
+            if (m_gamepad_trigger_left != 0)    m_gamepad_trigger_left  /= 255.0f;    // Convert [0, 255] to [0, 1]
+            if (m_gamepad_trigger_right != 0)   m_gamepad_trigger_right /= 255.0f;    // Convert [0, 255] to [0, 1]
+            if (m_gamepad_thumb_left.x != 0)    m_gamepad_thumb_left.x  = m_gamepad_thumb_left.x    < 0 ? m_gamepad_thumb_left.x    / 32768.0f : m_gamepad_thumb_left.x     / 32767.0f; // Convert [-32768, 32767] to [-1, 1]
+            if (m_gamepad_thumb_left.y != 0)    m_gamepad_thumb_left.y  = m_gamepad_thumb_left.y    < 0 ? m_gamepad_thumb_left.y    / 32768.0f : m_gamepad_thumb_left.y     / 32767.0f; // Convert [-32768, 32767] to [-1, 1]
+            if (m_gamepad_thumb_right.x != 0)   m_gamepad_thumb_right.x = m_gamepad_thumb_right.x   < 0 ? m_gamepad_thumb_right.x   / 32768.0f : m_gamepad_thumb_right.x    / 32767.0f; // Convert [-32768, 32767] to [-1, 1]
+            if (m_gamepad_thumb_right.y != 0)   m_gamepad_thumb_right.y = m_gamepad_thumb_right.y   < 0 ? m_gamepad_thumb_right.y   / 32768.0f : m_gamepad_thumb_right.y    / 32767.0f; // Convert [-32768, 32767] to [-1, 1]
+        }
+        else
+        {
+            for (auto i = start_index_gamepad; i <= start_index_gamepad + 11; i++)
+            {
+                m_keys[i] = false;
+            }
+        }
 
         m_is_new_frame = true;
-	}
+    }
 
-	bool Input::GamepadVibrate(const float left_motor_speed, const float right_motor_speed) const
-	{
-		if (!m_gamepad_connected)
-			return false;
+    bool Input::GamepadVibrate(const float left_motor_speed, const float right_motor_speed) const
+    {
+        if (!m_gamepad_connected)
+            return false;
 
-		XINPUT_VIBRATION vibration;
-		ZeroMemory(&vibration, sizeof(XINPUT_VIBRATION));
-		
-		vibration.wLeftMotorSpeed	= static_cast<int>(Clamp(left_motor_speed, 0.0f, 1.0f) * 65535);	// Convert [0, 1] to [0, 65535]
-		vibration.wRightMotorSpeed	= static_cast<int>(Clamp(right_motor_speed, 0.0f, 1.0f) * 65535);	// Convert [0, 1] to [0, 65535]
+        XINPUT_VIBRATION vibration;
+        ZeroMemory(&vibration, sizeof(XINPUT_VIBRATION));
+        
+        vibration.wLeftMotorSpeed   = static_cast<int>(Helper::Clamp(left_motor_speed, 0.0f, 1.0f) * 65535);    // Convert [0, 1] to [0, 65535]
+        vibration.wRightMotorSpeed  = static_cast<int>(Helper::Clamp(right_motor_speed, 0.0f, 1.0f) * 65535);   // Convert [0, 1] to [0, 65535]
 
-		return XInputSetState(g_gamepad_num, &vibration) == ERROR_SUCCESS;
-	}
+        return XInputSetState(g_gamepad_num, &vibration) == ERROR_SUCCESS;
+    }
 }
 
 // Constant          Note

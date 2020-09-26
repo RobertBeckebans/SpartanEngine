@@ -24,52 +24,44 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //= INCLUDES ==================
 #include <vector>
 #include <string>
+#include "ScriptInstance.h"
 #include "../Core/ISubsystem.h"
 //=============================
 
 //= FORWARD DECLARATIONS =
-class asIScriptObject;
-class asIScriptFunction;
-class asIScriptEngine;
-class asIScriptContext;
-class asIScriptModule;
-class CScriptBuilder;
-struct asSFuncPtr;
-struct asSMessageInfo;
+struct _MonoDomain;
 //========================
 
 namespace Spartan
 {
-	class Module;
+    //= FORWARD DECLARATIONS =
+    class Script;
+    //========================
 
-	class Scripting : public ISubsystem
-	{
-	public:
-		Scripting(Context* context);
-		~Scripting();
+    static const uint32_t SCRIPT_NOT_LOADED = 0;
+
+    class Scripting : public ISubsystem
+    {
+    public:
+        Scripting(Context* context);
+        ~Scripting();
 
         //= Subsystem =============
         bool Initialize() override;
         //=========================
 
-		void Clear();
-		asIScriptEngine* GetAsIScriptEngine() const;
+        uint32_t Load(const std::string& file_path, Script* script_component);
+        ScriptInstance* GetScript(const uint32_t id);
+        bool CallScriptFunction_Start(const ScriptInstance* script_instance);
+        bool CallScriptFunction_Update(const ScriptInstance* script_instance, float delta_time);
+        void Clear();
 
-		// Contexts
-		asIScriptContext* RequestContext();
-		void ReturnContext(asIScriptContext* ctx);
+    private:
+        bool CompileApiAssembly();
 
-		// Calls
-		bool ExecuteCall(asIScriptFunction* scriptFunc, asIScriptObject* obj, float delta_time = -1.0f);
-
-		// Modules
-		void DiscardModule(const std::string& moduleName) const;
-
-	private:
-        asIScriptEngine* m_scriptEngine = nullptr;
-		std::vector<asIScriptContext*> m_contexts;
-
-		void LogExceptionInfo(asIScriptContext* ctx) const;
-		void message_callback(const asSMessageInfo& msg) const;
-	};
+        MonoDomain* m_domain = nullptr;
+        std::unordered_map<uint32_t, ScriptInstance> m_scripts;
+        uint32_t m_script_id = SCRIPT_NOT_LOADED;
+        bool m_api_assembly_compiled = false;
+    };
 }

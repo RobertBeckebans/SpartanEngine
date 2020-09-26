@@ -21,69 +21,74 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ==========
+//= INCLUDES ======================
 #include <vector>
-#include "RHI_Object.h"
-//=====================
+#include "../Core/Spartan_Object.h"
+//=================================
 
 namespace Spartan
 {
-	class RHI_IndexBuffer : public RHI_Object
-	{
-	public:
-		RHI_IndexBuffer(const std::shared_ptr<RHI_Device>& rhi_device)
-		{
-			m_rhi_device = rhi_device;
-		}
+    class RHI_IndexBuffer : public Spartan_Object
+    {
+    public:
+        RHI_IndexBuffer(const std::shared_ptr<RHI_Device>& rhi_device)
+        {
+            m_rhi_device = rhi_device;
+        }
 
-		~RHI_IndexBuffer();
-	
-		template<typename T>
-		bool Create(const std::vector<T>& indices)
-		{
-			m_stride        = sizeof(T);
-			m_index_count	= static_cast<uint32_t>(indices.size());
+        ~RHI_IndexBuffer()
+        {
+            _destroy();
+        }
+    
+        template<typename T>
+        bool Create(const std::vector<T>& indices)
+        {
+            m_stride        = sizeof(T);
+            m_index_count   = static_cast<uint32_t>(indices.size());
             m_size_gpu      = static_cast<uint64_t>(m_stride * m_index_count);
-			return _Create(static_cast<const void*>(indices.data()));
-		}
+            return _create(static_cast<const void*>(indices.data()));
+        }
 
-		template<typename T>
-		bool Create(const T* indices, const uint32_t index_count)
-		{
-			m_stride        = sizeof(T);
-			m_index_count	= index_count;
-			m_size_gpu      = static_cast<uint64_t>(m_stride * m_index_count);
-			return _Create(static_cast<const void*>(indices));
-		}
-
-		template<typename T>
-		bool CreateDynamic(const uint32_t index_count)
-		{
-			m_stride        = sizeof(T);
-			m_index_count	= index_count;
+        template<typename T>
+        bool Create(const T* indices, const uint32_t index_count)
+        {
+            m_stride        = sizeof(T);
+            m_index_count   = index_count;
             m_size_gpu      = static_cast<uint64_t>(m_stride * m_index_count);
-			return _Create(nullptr);
-		}
+            return _create(static_cast<const void*>(indices));
+        }
 
-		void* Map() const;
-		bool Unmap() const;
-        bool Flush() const;
+        template<typename T>
+        bool CreateDynamic(const uint32_t index_count)
+        {
+            m_stride        = sizeof(T);
+            m_index_count   = index_count;
+            m_size_gpu      = static_cast<uint64_t>(m_stride * m_index_count);
+            return _create(nullptr);
+        }
 
-        void* GetResource()		    const { return m_buffer; }
-        uint32_t GetIndexCount()	const { return m_index_count; }
-		bool Is16Bit()			    const { return sizeof(uint16_t) == m_stride; }
-        bool Is32Bit()			    const { return sizeof(uint32_t) == m_stride; }
+        void* Map();
+        bool Unmap();
 
-	protected:
-		bool _Create(const void* indices);
+        void* GetResource()         const { return m_buffer; }
+        uint32_t GetIndexCount()    const { return m_index_count; }
+        bool Is16Bit()              const { return sizeof(uint16_t) == m_stride; }
+        bool Is32Bit()              const { return sizeof(uint32_t) == m_stride; }
 
-		uint32_t m_stride		= 0;
-		uint32_t m_index_count	= 0;
-		std::shared_ptr<RHI_Device> m_rhi_device;
+    protected:
+        bool _create(const void* indices);
+        void _destroy();
 
-		// API
-		void* m_buffer			= nullptr;
-		void* m_buffer_memory	= nullptr;
-        bool m_mappable         = false;
-	};
+        bool m_persistent_mapping   = true; // only affects Vulkan
+        void* m_mapped              = nullptr;
+        uint32_t m_stride           = 0;
+        uint32_t m_index_count      = 0;
+        
+        // API
+        std::shared_ptr<RHI_Device> m_rhi_device;
+        void* m_buffer      = nullptr;
+        void* m_allocation  = nullptr;
+        bool m_is_mappable  = true;
+    };
 }

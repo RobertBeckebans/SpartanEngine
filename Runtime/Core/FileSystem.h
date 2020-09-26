@@ -21,17 +21,20 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ==================
+//= INCLUDES ===================
 #include <vector>
 #include <string>
-#include "../Core/EngineDefs.h"
-//=============================
+#include "Spartan_Definitions.h"
+//==============================
 
 namespace Spartan
 {
-	class SPARTAN_CLASS FileSystem
-	{
-	public:
+    class SPARTAN_CLASS FileSystem
+    {
+    public:
+        // File creation
+        static void CreateTextFile(const std::string& file_path, const std::string& text);
+
         // Strings
         static bool IsEmptyOrWhitespace(const std::string& var);
         static bool IsAlphanumeric(const std::string& var);
@@ -46,40 +49,41 @@ namespace Spartan
 
         // Paths
         static void OpenDirectoryWindow(const std::string& path);
-		static bool CreateDirectory_(const std::string& path);
-		static bool Delete(const std::string& path);	
-		static bool Exists(const std::string& path);
+        static bool CreateDirectory_(const std::string& path);
+        static bool Delete(const std::string& path);    
+        static bool Exists(const std::string& path);
         static bool IsDirectory(const std::string& path);
         static bool IsFile(const std::string& path);
-		static bool CopyFileFromTo(const std::string& source, const std::string& destination);
-		static std::string GetFileNameFromFilePath(const std::string& path);
-		static std::string GetFileNameNoExtensionFromFilePath(const std::string& path);
-		static std::string GetDirectoryFromFilePath(const std::string& path);
-		static std::string GetFilePathWithoutExtension(const std::string& path);
-		static std::string GetExtensionFromFilePath(const std::string& path);
+        static bool CopyFileFromTo(const std::string& source, const std::string& destination);
+        static std::string GetFileNameFromFilePath(const std::string& path);
+        static std::string GetFileNameNoExtensionFromFilePath(const std::string& path);
+        static std::string GetDirectoryFromFilePath(const std::string& path);
+        static std::string GetFilePathWithoutExtension(const std::string& path);
+        static std::string ReplaceExtension(const std::string& path, const std::string& extension);
+        static std::string GetExtensionFromFilePath(const std::string& path);
         static std::string NativizeFilePath(const std::string& path);
-		static std::string GetRelativePath(const std::string& path);
-		static std::string GetWorkingDirectory();	
+        static std::string GetRelativePath(const std::string& path);
+        static std::string GetWorkingDirectory();    
         static std::string GetRootDirectory(const std::string& path);
         static std::string GetParentDirectory(const std::string& path);
-		static std::vector<std::string> GetDirectoriesInDirectory(const std::string& path);
-		static std::vector<std::string> GetFilesInDirectory(const std::string& path);
+        static std::vector<std::string> GetDirectoriesInDirectory(const std::string& path);
+        static std::vector<std::string> GetFilesInDirectory(const std::string& path);
 
         // Supported files
-		static bool IsSupportedAudioFile(const std::string& path);
-		static bool IsSupportedImageFile(const std::string& path);
-		static bool IsSupportedModelFile(const std::string& path);
-		static bool IsSupportedShaderFile(const std::string& path);
-		static bool IsSupportedFontFile(const std::string& path);
-		static bool IsEngineScriptFile(const std::string& path);
-		static bool IsEnginePrefabFile(const std::string& path);
-		static bool IsEngineMaterialFile(const std::string& path);
-		static bool IsEngineMeshFile(const std::string& path);
-		static bool IsEngineModelFile(const std::string& path);
-		static bool IsEngineSceneFile(const std::string& path);
-		static bool IsEngineTextureFile(const std::string& path);
+        static bool IsSupportedAudioFile(const std::string& path);
+        static bool IsSupportedImageFile(const std::string& path);
+        static bool IsSupportedModelFile(const std::string& path);
+        static bool IsSupportedShaderFile(const std::string& path);
+        static bool IsSupportedFontFile(const std::string& path);
+        static bool IsEngineScriptFile(const std::string& path);
+        static bool IsEnginePrefabFile(const std::string& path);
+        static bool IsEngineMaterialFile(const std::string& path);
+        static bool IsEngineMeshFile(const std::string& path);
+        static bool IsEngineModelFile(const std::string& path);
+        static bool IsEngineSceneFile(const std::string& path);
+        static bool IsEngineTextureFile(const std::string& path);
         static bool IsEngineAudioFile(const std::string& path);
-		static bool IsEngineShaderFile(const std::string& path);
+        static bool IsEngineShaderFile(const std::string& path);
         static bool IsEngineFile(const std::string& path);
 
         // Supported files in directory
@@ -90,17 +94,18 @@ namespace Spartan
         static std::vector<std::string> GetSupportedModelFilesFromPaths(const std::vector<std::string>& paths);
         static std::vector<std::string> GetSupportedModelFilesInDirectory(const std::string& path);
         static std::vector<std::string> GetSupportedSceneFilesInDirectory(const std::string& path);
-	};
+    };
 
-    static const char* EXTENSION_WORLD     = ".world";
+    static const char* EXTENSION_WORLD      = ".world";
     static const char* EXTENSION_MATERIAL   = ".material";
-    static const char* EXTENSION_MODEL     = ".model";
-    static const char* EXTENSION_PREFAB    = ".prefab";
-    static const char* EXTENSION_SHADER    = ".shader";
-    static const char* EXTENSION_FONT      = ".font";
-    static const char* EXTENSION_TEXTURE   = ".texture";
-    static const char* EXTENSION_MESH      = ".mesh";
-    static const char* EXTENSION_AUDIO     = ".audio";
+    static const char* EXTENSION_MODEL      = ".model";
+    static const char* EXTENSION_PREFAB     = ".prefab";
+    static const char* EXTENSION_SHADER     = ".shader";
+    static const char* EXTENSION_FONT       = ".font";
+    static const char* EXTENSION_TEXTURE    = ".texture";
+    static const char* EXTENSION_MESH       = ".mesh";
+    static const char* EXTENSION_AUDIO      = ".audio";
+    static const char* EXTENSION_SCRIPT     = ".cs";
 
     static const std::vector<std::string> supported_formats_image
     {
@@ -207,7 +212,7 @@ namespace Spartan
 
     static const std::vector<std::string> supported_formats_script
     {
-        ".as"
+        ".cs"
     };
 
     static const std::vector<std::string> supported_formats_font

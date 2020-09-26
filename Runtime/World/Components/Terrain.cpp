@@ -20,13 +20,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
 //= INCLUDES ============================
+#include "Spartan.h"
 #include "Terrain.h"
 #include "Renderable.h"
 #include "..\Entity.h"
 #include "..\..\RHI\RHI_Texture2D.h"
-#include "..\..\Logging\Log.h"
-#include "..\..\Math\Vector3.h"
-#include "..\..\Math\MathHelper.h"
 #include "..\..\RHI\RHI_Vertex.h"
 #include "..\..\Rendering\Model.h"
 #include "..\..\IO\FileStream.h"
@@ -106,7 +104,7 @@ namespace Spartan
             m_is_generating = true;
 
             // Get height map data
-            const vector<std::byte> height_map_data = m_height_map->GetMipmap(0);
+            const vector<std::byte> height_map_data = m_height_map->GetOrLoadMip(0);
             if (height_map_data.empty())
             {
                 LOG_ERROR("Height map has no data");
@@ -174,10 +172,10 @@ namespace Spartan
                 const float height = (static_cast<float>(height_map[k]) / 255.0f);
 
                 // Construct position
-                const uint32_t index        = y * m_width + x;
+                const uint32_t index  = y * m_width + x;
                 positions[index].x    = static_cast<float>(x) - m_width * 0.5f;     // center on the X axis
                 positions[index].z    = static_cast<float>(y) - m_height * 0.5f;    // center on the Z axis
-                positions[index].y    = Lerp(m_min_y, m_max_y, height);
+                positions[index].y    = Helper::Lerp(m_min_y, m_max_y, height);
 
                 k += 4;
 
@@ -377,7 +375,7 @@ namespace Spartan
             }
         };
 
-        m_context->GetSubsystem<Threading>()->Loop(compute_vertex_normals_tangents, vertex_count);
+        m_context->GetSubsystem<Threading>()->AddTaskLoop(compute_vertex_normals_tangents, vertex_count);
 
         return true;
     }

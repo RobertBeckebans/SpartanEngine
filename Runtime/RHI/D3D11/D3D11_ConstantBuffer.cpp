@@ -19,15 +19,11 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= IMPLEMENTATION ===============
-#include "../RHI_Implementation.h"
-#ifdef API_GRAPHICS_D3D11
-//================================
-
 //= INCLUDES =====================
+#include "Spartan.h"
+#include "../RHI_Implementation.h"
 #include "../RHI_ConstantBuffer.h"
 #include "../RHI_Device.h"
-#include "../../Logging/Log.h"
 //================================
 
 //= NAMESPACES =====
@@ -36,74 +32,76 @@ using namespace std;
 
 namespace Spartan
 {
-	RHI_ConstantBuffer::~RHI_ConstantBuffer()
-	{
-		safe_release(*reinterpret_cast<ID3D11Buffer**>(&m_buffer));
-	}
-
-	void* RHI_ConstantBuffer::Map(const uint32_t offset_index /*= 0*/) const
+    void RHI_ConstantBuffer::_destroy()
     {
-		if (!m_rhi_device || !m_rhi_device->GetContextRhi()->device_context || !m_buffer)
-		{
-			LOG_ERROR_INVALID_INTERNALS();
-			return nullptr;
-		}
+        d3d11_utility::release(*reinterpret_cast<ID3D11Buffer**>(&m_buffer));
+    }
 
-		D3D11_MAPPED_SUBRESOURCE mapped_resource;
-		const auto result = m_rhi_device->GetContextRhi()->device_context->Map(static_cast<ID3D11Buffer*>(m_buffer), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped_resource);
-		if (FAILED(result))
-		{
-			LOG_ERROR("Failed to map constant buffer.");
-			return nullptr;
-		}
+    RHI_ConstantBuffer::RHI_ConstantBuffer(const std::shared_ptr<RHI_Device>& rhi_device, const string& name, bool is_dynamic /*= false*/)
+    {
+        m_rhi_device    = rhi_device;
+        m_name          = name;
+        m_is_dynamic    = false; // D3D11 doesn't do that
+    }
 
-		return mapped_resource.pData;
-	}
+    void* RHI_ConstantBuffer::Map()
+    {
+        if (!m_rhi_device || !m_rhi_device->GetContextRhi()->device_context || !m_buffer)
+        {
+            LOG_ERROR_INVALID_INTERNALS();
+            return nullptr;
+        }
 
-	bool RHI_ConstantBuffer::Unmap() const
-	{
-		if (!m_rhi_device || !m_rhi_device->GetContextRhi()->device_context || !m_buffer)
-		{
-			LOG_ERROR_INVALID_INTERNALS();
-			return false;
-		}
+        D3D11_MAPPED_SUBRESOURCE mapped_resource;
+        const auto result = m_rhi_device->GetContextRhi()->device_context->Map(static_cast<ID3D11Buffer*>(m_buffer), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped_resource);
+        if (FAILED(result))
+        {
+            LOG_ERROR("Failed to map constant buffer.");
+            return nullptr;
+        }
 
-		m_rhi_device->GetContextRhi()->device_context->Unmap(static_cast<ID3D11Buffer*>(m_buffer), 0);
-		return true;
-	}
+        return mapped_resource.pData;
+    }
 
-	bool RHI_ConstantBuffer::_Create()
-	{
-		if (!m_rhi_device || !m_rhi_device->GetContextRhi()->device)
-		{
-			LOG_ERROR_INVALID_PARAMETER();
-			return false;
-		}
+    bool RHI_ConstantBuffer::Unmap(const uint64_t offset /*= 0*/, const uint64_t size /*= 0*/)
+    {
+        if (!m_rhi_device || !m_rhi_device->GetContextRhi()->device_context || !m_buffer)
+        {
+            LOG_ERROR_INVALID_INTERNALS();
+            return false;
+        }
 
-        safe_release(*reinterpret_cast<ID3D11Buffer**>(&m_buffer));
+        m_rhi_device->GetContextRhi()->device_context->Unmap(static_cast<ID3D11Buffer*>(m_buffer), 0);
+        return true;
+    }
 
-		D3D11_BUFFER_DESC buffer_desc;
-		ZeroMemory(&buffer_desc, sizeof(buffer_desc));
-		buffer_desc.ByteWidth			= static_cast<UINT>(m_stride);
-		buffer_desc.Usage				= D3D11_USAGE_DYNAMIC;
-		buffer_desc.BindFlags			= D3D11_BIND_CONSTANT_BUFFER;
-		buffer_desc.CPUAccessFlags		= D3D11_CPU_ACCESS_WRITE;
-		buffer_desc.MiscFlags			= 0;
-		buffer_desc.StructureByteStride = 0;
+    bool RHI_ConstantBuffer::_create()
+    {
+        if (!m_rhi_device || !m_rhi_device->GetContextRhi()->device)
+        {
+            LOG_ERROR_INVALID_PARAMETER();
+            return false;
+        }
+
+        // Destroy previous buffer
+        _destroy();
+
+        D3D11_BUFFER_DESC buffer_desc;
+        ZeroMemory(&buffer_desc, sizeof(buffer_desc));
+        buffer_desc.ByteWidth            = static_cast<UINT>(m_stride);
+        buffer_desc.Usage                = D3D11_USAGE_DYNAMIC;
+        buffer_desc.BindFlags            = D3D11_BIND_CONSTANT_BUFFER;
+        buffer_desc.CPUAccessFlags        = D3D11_CPU_ACCESS_WRITE;
+        buffer_desc.MiscFlags            = 0;
+        buffer_desc.StructureByteStride = 0;
 
         const auto result = m_rhi_device->GetContextRhi()->device->CreateBuffer(&buffer_desc, nullptr, reinterpret_cast<ID3D11Buffer**>(&m_buffer));
-		if (FAILED(result))
-		{
-			LOG_ERROR("Failed to create constant buffer");
-			return false;
-		}
+        if (FAILED(result))
+        {
+            LOG_ERROR("Failed to create constant buffer");
+            return false;
+        }
 
-		return true;
-	}
-
-    bool RHI_ConstantBuffer::Flush(const uint32_t offset_index /*= 0*/)
-    {
         return true;
     }
 }
-#endif

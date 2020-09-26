@@ -21,16 +21,16 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ==========
+//= INCLUDES ===================
 #include <chrono>
-#include "EngineDefs.h"
-//=====================
+#include "Spartan_Definitions.h"
+//==============================
 
 namespace Spartan
 {
-	class SPARTAN_CLASS Stopwatch
-	{
-	public:
+    class SPARTAN_CLASS Stopwatch
+    {
+    public:
         Stopwatch() { Start(); }
         ~Stopwatch() = default;
 
@@ -51,7 +51,7 @@ namespace Spartan
             return static_cast<float>(ms.count());
         }
 
-	private:
-		std::chrono::time_point<std::chrono::high_resolution_clock> m_start;
-	};
+    private:
+        std::chrono::time_point<std::chrono::high_resolution_clock> m_start;
+    };
 }

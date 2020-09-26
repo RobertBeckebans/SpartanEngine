@@ -19,38 +19,42 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-// Downsample with a 4x4 box filter
-float4 Downsample_Box(float2 uv, Texture2D tex)
-{
-	float4 uv_delta = g_texel_size.xyxy * float4(-1.0f, -1.0f, 1.0f, 1.0f);
-	
-	float4 downsampled =
-	tex.Sample(sampler_bilinear_clamp, uv + uv_delta.xy) +
-	tex.Sample(sampler_bilinear_clamp, uv + uv_delta.zy) +
-	tex.Sample(sampler_bilinear_clamp, uv + uv_delta.xw) +
-	tex.Sample(sampler_bilinear_clamp, uv + uv_delta.zw);
+//= INCLUDES ==========
+#include "Common.hlsl"
+//=====================
 
-	return downsampled / 4.0f;
+// A 4x4 box filter
+float4 Box_Filter(float2 uv, Texture2D tex, float2 texel_size)
+{
+    float4 offset = texel_size.xyxy * float4(-1.0f, -1.0f, 1.0f, 1.0f);
+    
+    float4 samples =
+    tex.SampleLevel(sampler_bilinear_clamp, uv + offset.xy, 0) +
+    tex.SampleLevel(sampler_bilinear_clamp, uv + offset.zy, 0) +
+    tex.SampleLevel(sampler_bilinear_clamp, uv + offset.xw, 0) +
+    tex.SampleLevel(sampler_bilinear_clamp, uv + offset.zw, 0);
+
+    return samples / 4.0f;
 }
 
-// Downsample with a 4x4 box filter + anti-flicker filter
-float4 Downsample_BoxAntiFlicker(float2 uv, Texture2D tex)
+// A 4x4 box filter + anti-flicker filter
+float4 Box_Filter_AntiFlicker(float2 uv, Texture2D tex, float2 texel_size)
 {
-	float4 d = g_texel_size.xyxy * float4(-1.0f, -1.0f, 1.0f, 1.0f);
+    float4 d = texel_size.xyxy * float4(-1.0f, -1.0f, 1.0f, 1.0f);
 
-	float4 s1 = tex.Sample(sampler_bilinear_clamp, uv + d.xy);
-	float4 s2 = tex.Sample(sampler_bilinear_clamp, uv + d.zy);
-	float4 s3 = tex.Sample(sampler_bilinear_clamp, uv + d.xw);
-	float4 s4 = tex.Sample(sampler_bilinear_clamp, uv + d.zw);
-	
-	// Karis's luma weighted average
-	float s1w = 1 / (luminance(s1) + 1);
-	float s2w = 1 / (luminance(s2) + 1);
-	float s3w = 1 / (luminance(s3) + 1);
-	float s4w = 1 / (luminance(s4) + 1);
-	float one_div_wsum = 1.0 / (s1w + s2w + s3w + s4w);
-	
-	return (s1 * s1w + s2 * s2w + s3 * s3w + s4 * s4w) * one_div_wsum;
+    float4 s1 = tex.SampleLevel(sampler_bilinear_clamp, uv + d.xy, 0.0f);
+    float4 s2 = tex.SampleLevel(sampler_bilinear_clamp, uv + d.zy, 0.0f);
+    float4 s3 = tex.SampleLevel(sampler_bilinear_clamp, uv + d.xw, 0.0f);
+    float4 s4 = tex.SampleLevel(sampler_bilinear_clamp, uv + d.zw, 0.0f);
+    
+    // Karis's luma weighted average
+    float s1w = 1 / (luminance(s1) + 1);
+    float s2w = 1 / (luminance(s2) + 1);
+    float s3w = 1 / (luminance(s3) + 1);
+    float s4w = 1 / (luminance(s4) + 1);
+    float one_div_wsum = 1.0 / (s1w + s2w + s3w + s4w);
+    
+    return (s1 * s1w + s2 * s2w + s3 * s3w + s4 * s4w) * one_div_wsum;
 }
 
 // Better, temporally stable box filtering
@@ -62,21 +66,21 @@ float4 Downsample_BoxAntiFlicker(float2 uv, Texture2D tex)
 // . . I . J . .
 // . K . L . M .
 // . . . . . . .
-float4 Downsample_Box13Tap(float2 uv, Texture2D tex)
+float4 Downsample_Box13Tap(float2 uv, Texture2D tex, float2 texel_size)
 {
-    float4 A = tex.Sample(sampler_bilinear_clamp, uv + g_texel_size * float2(-1.0f, -1.0f));
-    float4 B = tex.Sample(sampler_bilinear_clamp, uv + g_texel_size * float2( 0.0f, -1.0f));
-    float4 C = tex.Sample(sampler_bilinear_clamp, uv + g_texel_size * float2( 1.0f, -1.0f));
-    float4 D = tex.Sample(sampler_bilinear_clamp, uv + g_texel_size * float2(-0.5f, -0.5f));
-    float4 E = tex.Sample(sampler_bilinear_clamp, uv + g_texel_size * float2( 0.5f, -0.5f));
-    float4 F = tex.Sample(sampler_bilinear_clamp, uv + g_texel_size * float2(-1.0f,  0.0f));
+    float4 A = tex.Sample(sampler_bilinear_clamp, uv + texel_size * float2(-1.0f, -1.0f));
+    float4 B = tex.Sample(sampler_bilinear_clamp, uv + texel_size * float2( 0.0f, -1.0f));
+    float4 C = tex.Sample(sampler_bilinear_clamp, uv + texel_size * float2( 1.0f, -1.0f));
+    float4 D = tex.Sample(sampler_bilinear_clamp, uv + texel_size * float2(-0.5f, -0.5f));
+    float4 E = tex.Sample(sampler_bilinear_clamp, uv + texel_size * float2( 0.5f, -0.5f));
+    float4 F = tex.Sample(sampler_bilinear_clamp, uv + texel_size * float2(-1.0f,  0.0f));
     float4 G = tex.Sample(sampler_point_clamp, uv);
-    float4 H = tex.Sample(sampler_bilinear_clamp, uv + g_texel_size * float2( 1.0f,  0.0f));
-    float4 I = tex.Sample(sampler_bilinear_clamp, uv + g_texel_size * float2(-0.5f,  0.5f));
-    float4 J = tex.Sample(sampler_bilinear_clamp, uv + g_texel_size * float2( 0.5f,  0.5f));
-    float4 K = tex.Sample(sampler_bilinear_clamp, uv + g_texel_size * float2(-1.0f,  1.0f));
-    float4 L = tex.Sample(sampler_bilinear_clamp, uv + g_texel_size * float2( 0.0f,  1.0f));
-    float4 M = tex.Sample(sampler_bilinear_clamp, uv + g_texel_size * float2( 1.0f,  1.0f));
+    float4 H = tex.Sample(sampler_bilinear_clamp, uv + texel_size * float2( 1.0f,  0.0f));
+    float4 I = tex.Sample(sampler_bilinear_clamp, uv + texel_size * float2(-0.5f,  0.5f));
+    float4 J = tex.Sample(sampler_bilinear_clamp, uv + texel_size * float2( 0.5f,  0.5f));
+    float4 K = tex.Sample(sampler_bilinear_clamp, uv + texel_size * float2(-1.0f,  1.0f));
+    float4 L = tex.Sample(sampler_bilinear_clamp, uv + texel_size * float2( 0.0f,  1.0f));
+    float4 M = tex.Sample(sampler_bilinear_clamp, uv + texel_size * float2( 1.0f,  1.0f));
 
     float2 div = (1.0f / 4.0f) * float2(0.5f, 0.125f);
 
@@ -87,18 +91,4 @@ float4 Downsample_Box13Tap(float2 uv, Texture2D tex)
     o += (G + H + M + L) * div.y;
 
     return o;
-}
-
-// Upsample with a 4x4 box filter
-float4 Upsample_Box(float2 uv, Texture2D tex)
-{
-	float4 uv_delta = g_texel_size.xyxy * float4(-1.0f, -1.0f, 1.0f, 1.0f) * 0.5f;
-	
-	float4 upsampled =
-	tex.Sample(sampler_bilinear_clamp, uv + uv_delta.xy) +
-	tex.Sample(sampler_bilinear_clamp, uv + uv_delta.zy) +
-	tex.Sample(sampler_bilinear_clamp, uv + uv_delta.xw) +
-	tex.Sample(sampler_bilinear_clamp, uv + uv_delta.zw);
-
-	return upsampled / 4.0f;
 }

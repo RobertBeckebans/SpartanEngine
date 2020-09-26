@@ -19,7 +19,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES =====================
+//= INCLUDES =============
+#include "Spartan.h"
 #include "IComponent.h"
 #include "Light.h"
 #include "Environment.h"
@@ -35,8 +36,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "Transform.h"
 #include "Terrain.h"
 #include "../Entity.h"
-#include "../../Core/FileSystem.h"
-//================================
+//========================
 
 //= NAMESPACES =====
 using namespace std;
@@ -52,35 +52,35 @@ namespace Spartan
         m_enabled   = true;
     }
 
-	string IComponent::GetEntityName() const
-	{
-		if (!m_entity)
-			return "";
+    string IComponent::GetEntityName() const
+    {
+        if (!m_entity)
+            return "";
 
-		return m_entity->GetName();
-	}
+        return m_entity->GetName();
+    }
 
-	template <typename T>
-    inline constexpr ComponentType IComponent::TypeToEnum() { return ComponentType_Unknown; }
+    template <typename T>
+    inline constexpr ComponentType IComponent::TypeToEnum() { return ComponentType::Unknown; }
 
     template<typename T>
     inline constexpr void validate_component_type() { static_assert(std::is_base_of<IComponent, T>::value, "Provided type does not implement IComponent"); }
 
-	// Explicit template instantiation
-	#define REGISTER_COMPONENT(T, enumT) template<> SPARTAN_CLASS ComponentType IComponent::TypeToEnum<T>() { validate_component_type<T>(); return enumT; }
+    // Explicit template instantiation
+    #define REGISTER_COMPONENT(T, enumT) template<> SPARTAN_CLASS ComponentType IComponent::TypeToEnum<T>() { validate_component_type<T>(); return enumT; }
 
-	// To add a new component to the engine, simply register it here
-	REGISTER_COMPONENT(AudioListener,	ComponentType_AudioListener)
-	REGISTER_COMPONENT(AudioSource,		ComponentType_AudioSource)
-	REGISTER_COMPONENT(Camera,			ComponentType_Camera)
-	REGISTER_COMPONENT(Collider,		ComponentType_Collider)
-	REGISTER_COMPONENT(Constraint,		ComponentType_Constraint)
-	REGISTER_COMPONENT(Light,			ComponentType_Light)
-	REGISTER_COMPONENT(Renderable,		ComponentType_Renderable)
-	REGISTER_COMPONENT(RigidBody,		ComponentType_RigidBody)
-    REGISTER_COMPONENT(SoftBody,        ComponentType_SoftBody)
-	REGISTER_COMPONENT(Script,			ComponentType_Script)
-	REGISTER_COMPONENT(Environment,		ComponentType_Environment)
-    REGISTER_COMPONENT(Terrain,         ComponentType_Terrain)
-	REGISTER_COMPONENT(Transform,		ComponentType_Transform)
+    // To add a new component to the engine, simply register it here
+    REGISTER_COMPONENT(AudioListener,    ComponentType::AudioListener)
+    REGISTER_COMPONENT(AudioSource,        ComponentType::AudioSource)
+    REGISTER_COMPONENT(Camera,            ComponentType::Camera)
+    REGISTER_COMPONENT(Collider,        ComponentType::Collider)
+    REGISTER_COMPONENT(Constraint,        ComponentType::Constraint)
+    REGISTER_COMPONENT(Light,            ComponentType::Light)
+    REGISTER_COMPONENT(Renderable,        ComponentType::Renderable)
+    REGISTER_COMPONENT(RigidBody,        ComponentType::RigidBody)
+    REGISTER_COMPONENT(SoftBody,        ComponentType::SoftBody)
+    REGISTER_COMPONENT(Script,            ComponentType::Script)
+    REGISTER_COMPONENT(Environment,        ComponentType::Environment)
+    REGISTER_COMPONENT(Terrain,         ComponentType::Terrain)
+    REGISTER_COMPONENT(Transform,        ComponentType::Transform)
 }

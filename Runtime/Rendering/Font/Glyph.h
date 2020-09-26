@@ -23,50 +23,16 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 namespace Spartan
 {
-	struct Glyph
-	{
-		int xLeft;
-		int xRight;
-		int yTop;
-		int yBottom;
-		int width;
-		int height;
-		float uvXLeft;
-		float uvXRight;
-		float uvYTop;
-		float uvYBottom;
-		int descent;
-		int horizontalOffset;
-	};
+    struct Glyph
+    {
+        int32_t offset_x            = 0;
+        int32_t offset_y            = 0;
+        uint32_t width              = 0;
+        uint32_t height             = 0;
+        uint32_t horizontal_advance = 0;
+        float uv_x_left             = 0.0f;
+        float uv_x_right            = 0.0f;
+        float uv_y_top              = 0.0f;
+        float uv_y_bottom           = 0.0f;
+    };
 }
-
-// Glyph metrics:
-// --------------
-//
-//                       xmin                     xmax
-//                        |                         |
-//                        |<-------- width -------->|
-//                        |                         |
-//              |         +-------------------------+----------------- ymax
-//              |         |    ggggggggg   ggggg    |     ^        ^
-//              |         |   g:::::::::ggg::::g    |     |        |
-//              |         |  g:::::::::::::::::g    |     |        |
-//              |         | g::::::ggggg::::::gg    |     |        |
-//              |         | g:::::g     g:::::g     |     |        |
-//    offsetX  -|-------->| g:::::g     g:::::g     |  offsetY     |
-//              |         | g:::::g     g:::::g     |     |        |
-//              |         | g::::::g    g:::::g     |     |        |
-//              |         | g:::::::ggggg:::::g     |     |        |
-//              |         |  g::::::::::::::::g     |     |      height
-//              |         |   gg::::::::::::::g     |     |        |
-//  baseline ---*---------|---- gggggggg::::::g-----*--------      |
-//            / |         |             g:::::g     |              |
-//     origin   |         | gggggg      g:::::g     |              |
-//              |         | g:::::gg   gg:::::g     |              |
-//              |         |  g::::::ggg:::::::g     |              |
-//              |         |   gg:::::::::::::g      |              |
-//              |         |     ggg::::::ggg        |              |
-//              |         |         gggggg          |              v
-//              |         +-------------------------+----------------- ymin
-//              |                                   |
-//              |------------- advanceX ----------->|

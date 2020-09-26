@@ -19,14 +19,11 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= IMPLEMENTATION ===============
+//= INCLUDES ======================
+#include "Spartan.h"
 #include "../RHI_Implementation.h"
-#ifdef API_GRAPHICS_D3D11
-//================================
-
-//= INCLUDES ====================
 #include "../RHI_DescriptorCache.h"
-//===============================
+//=================================
 namespace Spartan
 {
     RHI_DescriptorCache::~RHI_DescriptorCache()
@@ -42,5 +39,3 @@ namespace Spartan
         return true;
     }
 }
-
-#endif

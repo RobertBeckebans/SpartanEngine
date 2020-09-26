@@ -25,27 +25,29 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 struct PixelInputType
 {
-    float4 position 	: SV_POSITION;
-    float2 uv 			: TEXCOORD;
-    float3 normal 		: NORMAL;
-    float3 positionWS 	: POSITIONT_WS;
+    float4 position     : SV_POSITION;
+    float2 uv           : TEXCOORD;
+    float3 normal       : NORMAL;
+    float3 positionWS   : POSITIONT_WS;
 };
 
 PixelInputType mainVS(Vertex_PosUvNorTan input)
 {
     PixelInputType output;
 
-    input.position.w = 1.0f;
-    output.positionWS = mul(input.position, g_transform).xyz;
-    output.position = mul(float4(output.positionWS, 1.0f), g_viewProjectionUnjittered);
-    output.normal = mul(input.normal, (float3x3)g_transform);
-    output.uv = input.uv;
+    input.position.w    = 1.0f;
+    output.positionWS   = mul(input.position, g_transform).xyz;
+    output.position     = mul(float4(output.positionWS, 1.0f), g_view_projection_unjittered);
+    output.normal       = mul(input.normal, (float3x3)g_transform);
+    output.uv           = input.uv;
 
     return output;
 }
 
 float4 mainPS(PixelInputType input) : SV_TARGET
 {
+	float4 color = 0.0f;
+
 #ifdef TRANSFORM
     float3 color_diffuse = g_transform_axis.xyz;
     float3 color_ambient = color_diffuse * 0.3f;
@@ -65,13 +67,13 @@ float4 mainPS(PixelInputType input) : SV_TARGET
         specular = pow(specAngle, 16.0f);
     }
 
-    return float4(color_ambient + lambertian * color_diffuse + color_specular * specular, 1.0f);
+    color = float4(color_ambient + lambertian * color_diffuse + color_specular * specular, 1.0f);
 #endif
 
 #ifdef OUTLINE
     float normal_threshold = 0.2f;
 
-    float2 uv               = project(input.positionWS.xyz, g_viewProjectionUnjittered).xy;
+    float2 uv               = project(input.positionWS.xyz, g_view_projection_unjittered).xy;
     float scale             = 1.0f;
     float halfScaleFloor    = floor(scale * 0.5f);
     float halfScaleCeil     = ceil(scale * 0.5f);
@@ -87,14 +89,16 @@ float4 mainPS(PixelInputType input) : SV_TARGET
     float3 normalFiniteDifference1 = normal3 - normal2;
     float edge_normal = sqrt(dot(normalFiniteDifference0, normalFiniteDifference0) + dot(normalFiniteDifference1, normalFiniteDifference1));
 
-	// Compute view direction bias
-	float3 view 		= get_view_direction(uv);
-	float3 normal 		= tex_normal.Sample(sampler_point_clamp, uv).rgb;
-	float view_dir_bias = dot(view, normal) * 0.5f + 0.5f;
+    // Compute view direction bias
+    float3 view         = get_view_direction(uv);
+    float3 normal       = tex_normal.Sample(sampler_point_clamp, uv).rgb;
+    float view_dir_bias = dot(view, normal) * 0.5f + 0.5f;
 
-	if (edge_normal * view_dir_bias < normal_threshold)
-		discard;
+    if (edge_normal * view_dir_bias < normal_threshold)
+        discard;
 
-    return float4(0.6f, 0.6f, 1.0f, 1.0f);
+    color = float4(0.6f, 0.6f, 1.0f, 1.0f);
 #endif
+
+	return color;
 }

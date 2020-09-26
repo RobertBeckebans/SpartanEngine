@@ -20,11 +20,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
 //= INCLUDES ======================
+#include "Spartan.h"
 #include "RHI_Shader.h"
 #include "RHI_InputLayout.h"
-#include "../Core/Context.h"
 #include "../Threading/Threading.h"
-#include "../Core/FileSystem.h"
+#include "../Rendering/Renderer.h"
 #pragma warning(push, 0) // Hide warnings belonging SPIRV-Cross 
 #include <spirv_hlsl.hpp>
 #pragma warning(pop)
@@ -36,44 +36,44 @@ using namespace std;
 
 namespace Spartan
 {
-	RHI_Shader::RHI_Shader(const shared_ptr<RHI_Device>& rhi_device)
-	{
-		m_rhi_device	= rhi_device;
-		m_input_layout	= make_shared<RHI_InputLayout>(rhi_device);
-	}
+    RHI_Shader::RHI_Shader(Context* context) : Spartan_Object(context)
+    {
+        m_rhi_device    = context->GetSubsystem<Renderer>()->GetRhiDevice();
+        m_input_layout    = make_shared<RHI_InputLayout>(m_rhi_device);
+    }
 
-	template <typename T>
-	void RHI_Shader::Compile(const Shader_Type type, const string& shader)
-	{
+    template <typename T>
+    void RHI_Shader::Compile(const RHI_Shader_Type type, const string& shader)
+    {
         m_shader_type = type;
         m_vertex_type = RHI_Vertex_Type_To_Enum<T>();
 
         // Can also be the source
         const bool is_file = FileSystem::IsFile(shader);
 
-		// Deduce name and file path
-		if (is_file)
-		{
-			m_name      = FileSystem::GetFileNameFromFilePath(shader);
-			m_file_path = shader;
-		}
-		else
-		{
-			m_name.clear();
-			m_file_path.clear();
-		}
+        // Deduce name and file path
+        if (is_file)
+        {
+            m_name      = FileSystem::GetFileNameFromFilePath(shader);
+            m_file_path = shader;
+        }
+        else
+        {
+            m_name.clear();
+            m_file_path.clear();
+        }
 
-		// Compile
+        // Compile
         m_compilation_state = Shader_Compilation_Compiling;
         m_resource          = _Compile(shader);
         m_compilation_state = m_resource ? Shader_Compilation_Succeeded : Shader_Compilation_Failed;
 
-		// Log compilation result
+        // Log compilation result
         {
             string type_str = "unknown";
-            type_str        = type == Shader_Vertex     ? "vertex"   : type_str;
-            type_str        = type == Shader_Pixel      ? "pixel"    : type_str;
-            type_str        = type == Shader_Compute    ? "compute"  : type_str;
+            type_str        = type == RHI_Shader_Vertex     ? "vertex"   : type_str;
+            type_str        = type == RHI_Shader_Pixel      ? "pixel"    : type_str;
+            type_str        = type == RHI_Shader_Compute    ? "compute"  : type_str;
 
             string defines;
             for (const auto& define : m_defines)
@@ -107,16 +107,32 @@ namespace Spartan
                 }
             }
         }
-	}
+    }
 
-	template <typename T>
-	void RHI_Shader::CompileAsync(Context* context, const Shader_Type type, const string& shader)
-	{
-		context->GetSubsystem<Threading>()->AddTask([this, type, shader]()
-		{
-			Compile<T>(type, shader);
-		});
-	}
+    template <typename T>
+    void RHI_Shader::CompileAsync(const RHI_Shader_Type type, const string& shader)
+    {
+        m_context->GetSubsystem<Threading>()->AddTask([this, type, shader]()
+        {
+            Compile<T>(type, shader);
+        });
+    }
+
+    void RHI_Shader::WaitForCompilation()
+    {
+        // Wait
+        while (m_compilation_state == Shader_Compilation_Compiling)
+        {
+            LOG_INFO("Waiting for shader \"%s\" to compile...", m_name.c_str());
+            std::this_thread::sleep_for(std::chrono::milliseconds(16));
+        }
+        
+        // Log error in case of failure
+        if (m_compilation_state != Shader_Compilation_Succeeded)
+        {
+            LOG_ERROR("Shader \"%s\" failed compile", m_name.c_str());
+        }
+    }
 
     const char* RHI_Shader::GetEntryPoint() const
     {
@@ -126,9 +142,9 @@ namespace Spartan
         static const char* entry_point_ps = "mainPS";
         static const char* entry_point_cs = "mainCS";
 
-        if (m_shader_type == Shader_Vertex)     return entry_point_vs;
-        if (m_shader_type == Shader_Pixel)      return entry_point_ps;
-        if (m_shader_type == Shader_Compute)    return entry_point_cs;
+        if (m_shader_type == RHI_Shader_Vertex)     return entry_point_vs;
+        if (m_shader_type == RHI_Shader_Pixel)      return entry_point_ps;
+        if (m_shader_type == RHI_Shader_Compute)    return entry_point_cs;
 
         return entry_point_empty;
     }
@@ -142,18 +158,18 @@ namespace Spartan
         static const char* target_profile_ps = "ps_5_0";
         static const char* target_profile_cs = "cs_5_0";
         #elif defined(API_GRAPHICS_D3D12)
-        static const char* target_profile_vs = "vs_6_0";
-        static const char* target_profile_ps = "ps_6_0";
-        static const char* target_profile_cs = "cs_6_0";
+        static const char* target_profile_vs = "vs_6_6";
+        static const char* target_profile_ps = "ps_6_6";
+        static const char* target_profile_cs = "cs_6_6";
         #elif defined(API_GRAPHICS_VULKAN)
-        static const char* target_profile_vs = "vs_6_0";
-        static const char* target_profile_ps = "ps_6_0";
-        static const char* target_profile_cs = "cs_6_0";
+        static const char* target_profile_vs = "vs_6_6";
+        static const char* target_profile_ps = "ps_6_6";
+        static const char* target_profile_cs = "cs_6_6";
         #endif
 
-        if (m_shader_type == Shader_Vertex)     return target_profile_vs;
-        if (m_shader_type == Shader_Pixel)      return target_profile_ps;
-        if (m_shader_type == Shader_Compute)    return target_profile_cs;
+        if (m_shader_type == RHI_Shader_Vertex)     return target_profile_vs;
+        if (m_shader_type == RHI_Shader_Pixel)      return target_profile_ps;
+        if (m_shader_type == RHI_Shader_Compute)    return target_profile_cs;
 
         return target_profile_empty;
     }
@@ -171,54 +187,73 @@ namespace Spartan
         return shader_model;
     }
 
-    void RHI_Shader::_Reflect(const Shader_Type shader_type, const uint32_t* ptr, const uint32_t size)
-	{
-		// Initialize compiler with SPIR-V data
-		const auto compiler = spirv_cross::CompilerHLSL(ptr, size);
+    void RHI_Shader::_Reflect(const RHI_Shader_Type shader_type, const uint32_t* ptr, const uint32_t size)
+    {
+        // Initialize compiler with SPIR-V data
+        const auto compiler = spirv_cross::CompilerHLSL(ptr, size);
 
-		// The SPIR-V is now parsed, and we can perform reflection on it
+        // The SPIR-V is now parsed, and we can perform reflection on it
         spirv_cross::ShaderResources resources = compiler.get_shader_resources();
 
-		// Get samplers
-		for (const auto& resource : resources.separate_samplers)
-		{
+        // Get storage images
+        for (const auto& resource : resources.storage_images)
+        {
             m_descriptors.emplace_back
             (
-                RHI_Descriptor_Type::RHI_Descriptor_Sampler,                    // Type
-                compiler.get_decoration(resource.id, spv::DecorationBinding),   // Slot
-                shader_type                                                     // Stage
+                RHI_Descriptor_Type::RHI_Descriptor_Texture,                    // type
+                compiler.get_decoration(resource.id, spv::DecorationBinding),   // slot
+                shader_type,                                                    // stage
+                true,                                                           // is_storage
+                false                                                           // is_dynamic_constant_buffer
             );
-		}
+        }
 
-		// Get textures
-		for (const auto& resource : resources.separate_images)
-		{
+        // Get constant buffers
+        for (const auto& resource : resources.uniform_buffers)
+        {
             m_descriptors.emplace_back
             (
-                RHI_Descriptor_Type::RHI_Descriptor_Texture,                    // Type
-                compiler.get_decoration(resource.id, spv::DecorationBinding),   // Slot
-                shader_type                                                     // Stage
+                RHI_Descriptor_Type::RHI_Descriptor_ConstantBuffer,             // type
+                compiler.get_decoration(resource.id, spv::DecorationBinding),   // slot
+                shader_type,                                                    // stage
+                false,                                                          // is_storage
+                false                                                           // is_dynamic_constant_buffer
             );
-		}
+        }
 
-		// Get constant buffers
-		for (const auto& resource : resources.uniform_buffers)
-		{
+        // Get textures
+        for (const auto& resource : resources.separate_images)
+        {
             m_descriptors.emplace_back
             (
-                RHI_Descriptor_Type::RHI_Descriptor_ConstantBuffer,             // Type
-                compiler.get_decoration(resource.id, spv::DecorationBinding),   // Slot
-                shader_type                                                     // Stage
+                RHI_Descriptor_Type::RHI_Descriptor_Texture,                    // type
+                compiler.get_decoration(resource.id, spv::DecorationBinding),   // slot
+                shader_type,                                                    // stage
+                false,                                                          // is_storage
+                false                                                           // is_dynamic_constant_buffer
             );
-		}
-	}
+        }
 
-    //= Explicit template instantiation =============================================================================
-    template void RHI_Shader::CompileAsync<RHI_Vertex_Undefined>(Context*, const Shader_Type, const std::string&);
-    template void RHI_Shader::CompileAsync<RHI_Vertex_Pos>(Context*, const Shader_Type, const std::string&);
-    template void RHI_Shader::CompileAsync<RHI_Vertex_PosTex>(Context*, const Shader_Type, const std::string&);
-    template void RHI_Shader::CompileAsync<RHI_Vertex_PosCol>(Context*, const Shader_Type, const std::string&);
-    template void RHI_Shader::CompileAsync<RHI_Vertex_Pos2dTexCol8>(Context*, const Shader_Type, const std::string&);
-    template void RHI_Shader::CompileAsync<RHI_Vertex_PosTexNorTan>(Context*, const Shader_Type, const std::string&);
-    //===============================================================================================================
+        // Get samplers
+        for (const auto& resource : resources.separate_samplers)
+        {
+            m_descriptors.emplace_back
+            (
+                RHI_Descriptor_Type::RHI_Descriptor_Sampler,                    // type
+                compiler.get_decoration(resource.id, spv::DecorationBinding),   // slot
+                shader_type,                                                    // stage
+                false,                                                          // is_storage
+                false                                                           // is_dynamic_constant_buffer
+            );
+        }
+    }
+
+    //= Explicit template instantiation =======================================================================
+    template void RHI_Shader::CompileAsync<RHI_Vertex_Undefined>(const RHI_Shader_Type, const std::string&);
+    template void RHI_Shader::CompileAsync<RHI_Vertex_Pos>(const RHI_Shader_Type, const std::string&);
+    template void RHI_Shader::CompileAsync<RHI_Vertex_PosTex>(const RHI_Shader_Type, const std::string&);
+    template void RHI_Shader::CompileAsync<RHI_Vertex_PosCol>(const RHI_Shader_Type, const std::string&);
+    template void RHI_Shader::CompileAsync<RHI_Vertex_Pos2dTexCol8>(const RHI_Shader_Type, const std::string&);
+    template void RHI_Shader::CompileAsync<RHI_Vertex_PosTexNorTan>(const RHI_Shader_Type, const std::string&);
+    //=========================================================================================================
 }

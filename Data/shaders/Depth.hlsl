@@ -25,17 +25,18 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 Pixel_PosUv mainVS(Vertex_PosUv input)
 {
-	Pixel_PosUv output;
+    Pixel_PosUv output;
 
-	input.position.w 	= 1.0f;	
-    output.position 	= mul(input.position, g_object_transform);
-    output.uv 			= input.uv;
+    input.position.w    = 1.0f; 
+    output.position     = mul(input.position, g_object_transform);
+    output.uv           = input.uv;
 
-	return output;
+    return output;
 }
 
+// Translucent shadows
 float4 mainPS(Pixel_PosUv input) : SV_TARGET
 {
-    float2 uv = float2(input.uv.x * materialTiling.x + materialOffset.x, input.uv.y * materialTiling.y + materialOffset.y);
-    return degamma(tex.Sample(sampler_anisotropic_wrap, uv)) * materialAlbedoColor;
+    float2 uv = float2(input.uv.x * g_mat_tiling.x + g_mat_offset.x, input.uv.y * g_mat_offset.y + g_mat_tiling.y);
+    return degamma(tex.SampleLevel(sampler_anisotropic_wrap, uv, 0)) * g_mat_color;
 }

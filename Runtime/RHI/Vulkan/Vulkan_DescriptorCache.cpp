@@ -19,12 +19,9 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= IMPLEMENTATION ===============
-#ifdef API_GRAPHICS_VULKAN
-#include "../RHI_Implementation.h"
-//================================
-
 //= INCLUDES ======================
+#include "Spartan.h"
+#include "../RHI_Implementation.h"
 #include "../RHI_DescriptorCache.h"
 #include "../RHI_Shader.h"
 //=================================
@@ -39,6 +36,9 @@ namespace Spartan
     {
         if (m_descriptor_pool)
         {
+            // Wait in case the buffer is still in use
+            m_rhi_device->Queue_WaitAll();
+
             vkDestroyDescriptorPool(m_rhi_device->GetContextRhi()->device, static_cast<VkDescriptorPool>(m_descriptor_pool), nullptr);
             m_descriptor_pool = nullptr;
         }
@@ -49,6 +49,12 @@ namespace Spartan
         if (!m_rhi_device || !m_rhi_device->GetContextRhi())
         {
             LOG_ERROR_INVALID_INTERNALS();
+            return;
+        }
+
+        if (m_descriptor_set_capacity == descriptor_set_capacity)
+        {
+            LOG_INFO("Capacity is already %d elements", m_descriptor_set_capacity);
             return;
         }
 
@@ -68,20 +74,32 @@ namespace Spartan
 
         // Re-allocate everything with double size
         CreateDescriptorPool(descriptor_set_capacity);
+
+        // Log
+        if (descriptor_set_capacity > m_descriptor_set_capacity)
+        {
+            LOG_INFO("Capacity has been increased to %d elements", descriptor_set_capacity);
+        }
+        else if (descriptor_set_capacity < m_descriptor_set_capacity)
+        {
+            LOG_INFO("Capacity has been decreased to %d elements", descriptor_set_capacity);
+        }
+
+        // Update capacity
+        m_descriptor_set_capacity = descriptor_set_capacity;
     }
 
     bool RHI_DescriptorCache::CreateDescriptorPool(uint32_t descriptor_set_capacity)
     {
         // Pool sizes
-        vector<VkDescriptorPoolSize> pool_sizes(4);
-        pool_sizes[0].type              = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        pool_sizes[0].descriptorCount   = RHI_Context::descriptor_max_constant_buffers;
-        pool_sizes[1].type              = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-        pool_sizes[1].descriptorCount   = RHI_Context::descriptor_max_constant_buffers_dynamic;
-        pool_sizes[2].type              = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        pool_sizes[2].descriptorCount   = RHI_Context::descriptor_max_textures;
-        pool_sizes[3].type              = VK_DESCRIPTOR_TYPE_SAMPLER;
-        pool_sizes[3].descriptorCount   = RHI_Context::descriptor_max_samplers;
+        std::array<VkDescriptorPoolSize, 5> pool_sizes =
+        {
+            VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_SAMPLER,                   rhi_descriptor_max_samplers },
+            VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,             rhi_descriptor_max_textures },
+            VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,             rhi_descriptor_max_storage_textures },
+            VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,            rhi_descriptor_max_constant_buffers },
+            VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,    rhi_descriptor_max_constant_buffers_dynamic }
+        };
 
         // Create info
         VkDescriptorPoolCreateInfo pool_create_info = {};
@@ -93,10 +111,6 @@ namespace Spartan
 
         // Pool
         const auto descriptor_pool = reinterpret_cast<VkDescriptorPool*>(&m_descriptor_pool);
-        if (!vulkan_common::error::check(vkCreateDescriptorPool(m_rhi_device->GetContextRhi()->device, &pool_create_info, nullptr, descriptor_pool)))
-            return false;
-
-        return true;
+        return vulkan_utility::error::check(vkCreateDescriptorPool(m_rhi_device->GetContextRhi()->device, &pool_create_info, nullptr, descriptor_pool));
     }
 }
-#endif

@@ -19,131 +19,129 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-static const uint g_vl_steps 		= 64; // below 64, detail loss starts to become easily observable
-static const float g_vl_scattering 	= 0.996f;
-static const float g_vl_pow			= 0.4f;
+static const uint g_vl_steps        = 8;
+static const float g_vl_scattering  = 0.5f;
+static const float g_vl_pow         =1.5f;
 
-// Mie scaterring approximated with Henyey-Greenstein phase function.
-float vl_compute_scattering(float v_dot_l)
+static const float g_vl_scattering2 = g_vl_scattering * g_vl_scattering;
+static const float g_vl_x           = 1 - g_vl_scattering2;
+static const float g_vl_y           = 1 + g_vl_scattering2;
+
+float mie_scattering(float v_dot_l)
 {
-    static const float vl_scattering2   = g_vl_scattering * g_vl_scattering;
-	static const float result           = 1.0f - vl_scattering2;
-	float e                             = abs(1.0f + vl_scattering2 - (2.0f * g_vl_scattering) * v_dot_l);
-	return result / pow(e, g_vl_pow);
+    float e = abs(g_vl_y - g_vl_scattering2 * v_dot_l);
+    return g_vl_x / pow(e, g_vl_pow);
 }
 
-float3 vl_raymarch(Light light, float3 ray_pos, float3 ray_step, float ray_dot_light, int array_index)
+float3 vl_raymarch(Light light, float3 ray_pos, float3 ray_step, float3 ray_dir, int array_index)
 {
-	float3 fog = 0.0f;
-    
-	for (uint i = 0; i < g_vl_steps; i++)
-	{
-		// Compute position in clip space
-        float3 pos = project(ray_pos, light_view_projection[array_index]);
-        
-		// Check to see if the light can "see" the pixel
-        #ifdef DIRECTIONAL
-		float depth_delta = compare_depth(float3(pos.xy, array_index), pos.z + light.bias);
-        #elif POINT
-        float depth_delta = compare_depth(normalize(ray_pos - light.position), pos.z + light.bias);
-        #elif SPOT
-        float depth_delta = compare_depth(float3(pos.xy, array_index), pos.z + light.bias);
-        #endif
-       
-		if (depth_delta > 0.0f)
-		{
-			fog += vl_compute_scattering(ray_dot_light);
-		}
-		
-		ray_pos += ray_step;
-	}
+    float3 fog = 0.0f;
 
-	return fog / (float)g_vl_steps;
-}
-
-float3 VolumetricLighting(Light light, float3 pos_world, float2 uv)
-{
-	float3 pixel_to_camera 			= g_camera_position.xyz - pos_world;
-	float pixel_to_camera_length 	= length(pixel_to_camera);
-	float3 ray_dir					= pixel_to_camera / pixel_to_camera_length;
-	float step_length 				= pixel_to_camera_length / (float)g_vl_steps;
-	float3 ray_step 				= ray_dir * step_length;
-	float3 ray_pos 					= pos_world;
-    #ifdef DIRECTIONAL
-	float ray_dot_light				= dot(ray_dir, light.direction);
-    #else
-    float ray_dot_light				= dot(ray_dir, -light.direction);
-    #endif
-	float3 fog 						= 0.0f;
-    
-	// Apply dithering as it will allows us to get away with a crazy low sample count ;-)
-	ray_pos += ray_step * dither_temporal(uv, 150.0f);
-    
-	#if DIRECTIONAL
+    [unroll]
+    for (uint i = 0; i < g_vl_steps; i++)
     {
-        [loop]
-        for (uint array_index = 0; array_index < light.array_size; array_index++)
+        float3 attenuation = 1.0f;
+        
+        // Attenuate
+        #if DIRECTIONAL
+        attenuation *= mie_scattering(dot(-light.direction, ray_dir));
+        #else
+        attenuation *= get_light_attenuation(light, ray_pos);
+        float3 to_light = normalize(light.position - ray_pos);
+        attenuation *= mie_scattering(dot(light.direction, -to_light));
+        #endif
+
+        #if SHADOWS == 1 ||  SHADOWS_TRANSPARENT == 1
+        // Compute position in clip space
+        float3 pos = project(ray_pos, cb_light_view_projection[array_index]);
+        #endif
+        
+        // Shadows - Opaque
+        #if SHADOWS
+        {
+            #if POINT
+            attenuation *= shadow_compare_depth(normalize(ray_pos - light.position), pos.z);
+            #else // directional & spot
+            attenuation *= shadow_compare_depth(float3(pos.xy, array_index), pos.z);
+            #endif
+        }
+        #endif
+
+        // Shadows - Transparent
+        #if SHADOWS_TRANSPARENT
+        {
+            #if POINT
+            attenuation *= shadow_sample_color(normalize(ray_pos - light.position)).rgb;
+            #else // directional & spot
+            attenuation *= shadow_sample_color(float3(pos.xy, array_index)).rgb;
+            #endif
+        }
+        #endif
+
+        // Integrate
+        fog += attenuation;
+
+        // Step
+        ray_pos += ray_step;
+    }
+
+    return fog / (float)g_vl_steps;
+}
+
+float3 VolumetricLighting(Surface surface, Light light)
+{
+    float3 ray_pos      = g_camera_position.xyz;
+    float3 ray_dir      = surface.camera_to_pixel;
+    float step_length   = surface.camera_to_pixel_length / (float)g_vl_steps;
+    float3 ray_step     = ray_dir * step_length;
+    float3 fog          = 0.0f;
+
+    // Offset ray to get away with way less steps and great detail
+    float offset = interleaved_gradient_noise(surface.uv * g_resolution) * 2.0f - 1.0f;
+    ray_pos += ray_step * offset;
+    
+    #if DIRECTIONAL
+    { 
+        [unroll]
+        for (uint array_index = 0; array_index < light_array_size; array_index++)
         {
             // Compute position in clip space
-            float3 pos = project(ray_pos, light_view_projection[array_index]);
-            
+            float3 pos = project(ray_pos, cb_light_view_projection[array_index]);
+
             [branch]
             if (is_saturated(pos))
             {
                 // Ray-march
-                fog += vl_raymarch(light, ray_pos, ray_step, ray_dot_light, array_index);
-                
+                fog += vl_raymarch(light, ray_pos, ray_step, ray_dir, array_index);
+
                 // If we are close to the edge of the primary cascade and a next cascade exists, lerp with it.
-                float cascade_lerp = (max3(abs(pos)) - 0.9f);
+                static const float blend_threshold = 0.1f;
+                float distance_to_edge = 1.0f - max3(abs(pos * 2.0f - 1.0f));
+                uint array_index_secondary = array_index + 1;
                 [branch]
-                if (cascade_lerp > 0.0f && array_index < light.array_size - 1)
+                if (distance_to_edge < blend_threshold && array_index_secondary < light_array_size)
                 {
                     // Ray-march using the next cascade
-                    float3 fog_secondary = vl_raymarch(light, ray_pos, ray_step, ray_dot_light, array_index + 1);
+                    float3 fog_secondary = vl_raymarch(light, ray_pos, ray_step, ray_dir, array_index_secondary);
                     
-                    // Blend cascades	
-                    fog = lerp(fog, fog_secondary, cascade_lerp);    
+                    // Blend cascades
+                    float alpha = smoothstep(0.0f, blend_threshold, distance_to_edge);
+                    fog = lerp(fog_secondary, fog, alpha);
+                    break;
                 }
-                
                 break;
             }
         }
     }
-    #elif POINT
+    #else
     {
-        [branch]
-        if (light.distance_to_pixel < light.range)
-        {
-            uint projection_index = direction_to_cube_face_index(light.direction);
-            
-            // Compute position in clip space
-            float3 pos = project(ray_pos, light_view_projection[projection_index]);
-            
-            // Ray-march
-			[branch]
-            if (is_saturated(pos))
-            {
-                fog = vl_raymarch(light, ray_pos, ray_step, ray_dot_light, projection_index);
-            }
-        }
-    }
-    #elif SPOT
-    {
-        [branch]
-        if (light.distance_to_pixel < light.range)
-        {
-            // Compute position in clip space
-            float3 pos = project(ray_pos, light_view_projection[0]);
-            
-            // Ray-march
-			[branch]
-            if (is_saturated(pos))
-            {
-                fog = vl_raymarch(light, ray_pos, ray_step, ray_dot_light, 0);
-            }
-        }
+        uint projection_index = 0;
+        #if POINT
+        projection_index = direction_to_cube_face_index(light.direction);
+        #endif
+        fog = vl_raymarch(light, ray_pos, ray_step, ray_dir, projection_index);
     }
     #endif
-	
-	return fog * light.color * light.intensity;
+
+    return fog;
 }

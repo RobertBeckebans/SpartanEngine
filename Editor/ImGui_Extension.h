@@ -21,10 +21,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES =======================
+//= INCLUDES ============================
 #include <string>
 #include <variant>
-#include "IconProvider.h"
+#include "WidgetsDeferred/IconProvider.h"
 #include "ImGui/Source/imgui.h"
 #include "RHI/RHI_Texture.h"
 #include "RHI/RHI_Texture2D.h"
@@ -34,93 +34,99 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "Input/Input.h"
 #include "World/World.h"
 #include "World/Components/Camera.h"
-//==================================
+#include <chrono>
+#include "Window.h"
+#include "Display/Display.h"
+//=======================================
 
 class EditorHelper
 {
 public:
 
-	static EditorHelper& Get()
-	{
-		static EditorHelper instance;
-		return instance;
-	}
+    static EditorHelper& Get()
+    {
+        static EditorHelper instance;
+        return instance;
+    }
 
-	void Initialize(Spartan::Context* context)
-	{
-		g_context			= context;
-		g_resource_cache	= context->GetSubsystem<Spartan::ResourceCache>();
-		g_world				= context->GetSubsystem<Spartan::World>();
-		g_threading			= context->GetSubsystem<Spartan::Threading>();
-		g_renderer			= context->GetSubsystem<Spartan::Renderer>();
-		g_input				= context->GetSubsystem<Spartan::Input>();
-	}
+    void Initialize(Spartan::Context* context)
+    {
+        g_context            = context;
+        g_resource_cache    = context->GetSubsystem<Spartan::ResourceCache>();
+        g_world                = context->GetSubsystem<Spartan::World>();
+        g_threading            = context->GetSubsystem<Spartan::Threading>();
+        g_renderer            = context->GetSubsystem<Spartan::Renderer>();
+        g_input                = context->GetSubsystem<Spartan::Input>();
+    }
 
-	void LoadModel(const std::string& file_path) const
-	{
-		auto resource_cache = g_resource_cache;
+    void LoadModel(const std::string& file_path) const
+    {
+        auto resource_cache = g_resource_cache;
 
-		// Load the model asynchronously
-		g_threading->AddTask([resource_cache, file_path]()
-		{
-			resource_cache->Load<Spartan::Model>(file_path);
-		});
-	}
+        // Load the model asynchronously
+        g_threading->AddTask([resource_cache, file_path]()
+        {
+            resource_cache->Load<Spartan::Model>(file_path);
+        });
+    }
 
-	void LoadScene(const std::string& file_path) const
-	{
-		auto world = g_world;
+    void LoadWorld(const std::string& file_path) const
+    {
+        auto world = g_world;
 
-		// Load the scene asynchronously
-		g_threading->AddTask([world, file_path]()
-		{
-			world->LoadFromFile(file_path);
-		});
-	}
+        // Loading a world resets everything so it's important to ensure that no tasks are running
+        g_threading->Flush(true);
 
-	void SaveScene(const std::string& file_path) const
-	{
-		auto world = g_world;
+        // Load the scene asynchronously
+        g_threading->AddTask([world, file_path]()
+        {
+            world->LoadFromFile(file_path);
+        });
+    }
 
-		// Save the scene asynchronously
-		g_threading->AddTask([world, file_path]()
-		{
-			world->SaveToFile(file_path);
-		});
-	}
+    void SaveWorld(const std::string& file_path) const
+    {
+        auto world = g_world;
 
-	void PickEntity()
-	{
-		// Get camera
-		const auto& camera = g_renderer->GetCamera();
-		if (!camera)
-			return;
+        // Save the scene asynchronously
+        g_threading->AddTask([world, file_path]()
+        {
+            world->SaveToFile(file_path);
+        });
+    }
 
-		// Pick the world
-		std::shared_ptr<Spartan::Entity> entity;
-		camera->Pick(g_input->GetMousePosition(), entity);
+    void PickEntity()
+    {
+        // Get camera
+        const auto& camera = g_renderer->GetCamera();
+        if (!camera)
+            return;
 
-		// Set the transform gizmo to the selected entity
-		SetSelectedEntity(entity);
+        // Pick the world
+        std::shared_ptr<Spartan::Entity> entity;
+        camera->Pick(g_input->GetMousePosition(), entity);
 
-		// Fire callback
-		g_on_entity_selected();
-	}
+        // Set the transform gizmo to the selected entity
+        SetSelectedEntity(entity);
 
-	void SetSelectedEntity(const std::shared_ptr<Spartan::Entity>& entity)
-	{
-		// keep returned entity instead as the transform gizmo can decide to reject it
-		g_selected_entity = g_renderer->SnapTransformGizmoTo(entity);
-	}
+        // Fire callback
+        g_on_entity_selected();
+    }
 
-	Spartan::Context*				g_context				= nullptr;
-	Spartan::ResourceCache*			g_resource_cache		= nullptr;
-	Spartan::World*					g_world					= nullptr;
-	Spartan::Threading*				g_threading				= nullptr;
-	Spartan::Renderer*				g_renderer				= nullptr;
-	Spartan::Input*					g_input					= nullptr;
-	std::weak_ptr<Spartan::Entity>	g_selected_entity;
-	std::function<void()>			g_on_entity_selected	= nullptr;
+    void SetSelectedEntity(const std::shared_ptr<Spartan::Entity>& entity)
+    {
+        // keep returned entity instead as the transform gizmo can decide to reject it
+        g_selected_entity = g_renderer->SnapTransformGizmoTo(entity);
+    }
+
+    Spartan::Context*                g_context                = nullptr;
+    Spartan::ResourceCache*            g_resource_cache        = nullptr;
+    Spartan::World*                    g_world                    = nullptr;
+    Spartan::Threading*                g_threading                = nullptr;
+    Spartan::Renderer*                g_renderer                = nullptr;
+    Spartan::Input*                    g_input                    = nullptr;
+    std::weak_ptr<Spartan::Entity>    g_selected_entity;
+    std::function<void()>            g_on_entity_selected    = nullptr;
 };
 
 namespace ImGuiEx
@@ -134,11 +140,11 @@ namespace ImGuiEx
         (
             static_cast<ImTextureID>(texture),
             size,
-            ImVec2(0, 0),			// uv0
-            ImVec2(1, 1),			// uv1
-            -1,						// frame padding
-            ImColor(0, 0, 0, 0),	// background
-            default_tint		    // tint
+            ImVec2(0, 0),            // uv0
+            ImVec2(1, 1),            // uv1
+            -1,                        // frame padding
+            ImColor(0, 0, 0, 0),    // background
+            default_tint            // tint
         );
     }
 
@@ -147,11 +153,11 @@ namespace ImGuiEx
         return ImGui::ImageButton(
             static_cast<ImTextureID>(IconProvider::Get().GetTextureByType(icon)),
             ImVec2(size, size),
-            ImVec2(0, 0),			// uv0
-            ImVec2(1, 1),			// uv1
-            -1,						// frame padding
-            ImColor(0, 0, 0, 0),	// background
-            default_tint		    // tint
+            ImVec2(0, 0),            // uv0
+            ImVec2(1, 1),            // uv1
+            -1,                        // frame padding
+            ImColor(0, 0, 0, 0),    // background
+            default_tint            // tint
         );
     }
 
@@ -161,11 +167,11 @@ namespace ImGuiEx
         const auto pressed = ImGui::ImageButton(
             static_cast<ImTextureID>(IconProvider::Get().GetTextureByType(icon)),
             ImVec2(size, size),
-            ImVec2(0, 0),			// uv0
-            ImVec2(1, 1),			// uv1
-            -1,						// frame padding
-            ImColor(0, 0, 0, 0),	// background
-            default_tint		    // tint
+            ImVec2(0, 0),            // uv0
+            ImVec2(1, 1),            // uv1
+            -1,                        // frame padding
+            ImColor(0, 0, 0, 0),    // background
+            default_tint            // tint
         );
         ImGui::PopID();
         return pressed;
@@ -178,8 +184,8 @@ namespace ImGuiEx
             ImVec2(size, size),
             ImVec2(0, 0),
             ImVec2(1, 1),
-            default_tint,		    // tint
-            ImColor(0, 0, 0, 0)		// border
+            default_tint,            // tint
+            ImColor(0, 0, 0, 0)        // border
         );
     }
 
@@ -190,8 +196,8 @@ namespace ImGuiEx
             ImVec2(size, size),
             ImVec2(0, 0),
             ImVec2(1, 1),
-            default_tint,		    // tint
-            ImColor(0, 0, 0, 0)		// border
+            default_tint,            // tint
+            ImColor(0, 0, 0, 0)        // border
         );
     }
 
@@ -214,8 +220,8 @@ namespace ImGuiEx
             ImVec2(size, size),
             ImVec2(0, 0),
             ImVec2(1, 1),
-            default_tint,		    // tint
-            ImColor(0, 0, 0, 0)		// border
+            default_tint,            // tint
+            ImColor(0, 0, 0, 0)        // border
         );
     }
 
@@ -263,33 +269,17 @@ namespace ImGuiEx
     }
 
     // Image slot
-    inline void ImageSlot(
-        const char* name,
-        const std::shared_ptr<Spartan::RHI_Texture>& image,
-        const std::function<void(const std::shared_ptr<Spartan::RHI_Texture>&)>& setter,
-        float offset_from_start_x   = 0.0f,
-        bool label_align_vertically = false
-    )
+    inline void ImageSlot(const std::shared_ptr<Spartan::RHI_Texture>& image, const std::function<void(const std::shared_ptr<Spartan::RHI_Texture>&)>& setter)
     {
         const ImVec2 slot_size  = ImVec2(80, 80);
         const float button_size = 15.0f;
-
-        // Text
-        if (name)
-        {
-            ImGui::Text(name);
-            if (!label_align_vertically)
-            {
-                ImGui::SameLine(offset_from_start_x);
-            }
-        }
 
         // Image
         ImGui::BeginGroup();
         {
             Spartan::RHI_Texture* texture   = image.get();
-            const ImVec2 pos_image                = ImGui::GetCursorPos();
-            const ImVec2 pos_button               = ImVec2(ImGui::GetCursorPosX() + slot_size.x - button_size * 2.0f + 6.0f, ImGui::GetCursorPosY() + 1.0f);
+            const ImVec2 pos_image          = ImGui::GetCursorPos();
+            const ImVec2 pos_button         = ImVec2(ImGui::GetCursorPosX() + slot_size.x - button_size * 2.0f + 6.0f, ImGui::GetCursorPosY() + 1.0f);
 
             // Remove button
             if (image != nullptr)
@@ -347,6 +337,39 @@ namespace ImGuiEx
             ImGui::BeginTooltip();
             ImGui::Text(text);
             ImGui::EndTooltip();
+        }
+    }
+
+    // A drag float which will wrap the mouse cursor around the edges of the screen
+    inline void DragFloatWrap(const char* label, float* v, float v_speed = 1.0f, float v_min = 0.0f, float v_max = 0.0f, const char* format = "%.3f", const ImGuiSliderFlags flags = 0)
+    {
+        ImGui::DragFloat(label, v, v_speed, v_min, v_max, format, flags);
+
+        if (ImGui::IsItemEdited() && ImGui::IsMouseDown(0))
+        {
+            Spartan::Input* input       = EditorHelper::Get().g_input;
+            Spartan::Math::Vector2 pos  = input->GetMousePosition();
+            uint32_t edge_padding       = 5;
+
+            bool wrapped = false;
+            if (pos.x >= Spartan::Display::GetWidth() - edge_padding)
+            {
+                pos.x = static_cast<float>(edge_padding + 1);
+                wrapped = true;              
+            }
+            else if (pos.x <= edge_padding)
+            {
+                pos.x = static_cast<float>(Spartan::Display::GetWidth() - edge_padding - 1);
+                wrapped = true;
+            }
+
+            if (wrapped)
+            {
+                ImGuiIO& imgui_io           = ImGui::GetIO();
+                imgui_io.MousePos           = pos;
+                imgui_io.MousePosPrev       = pos; // set previous position as well so that we eliminate a huge mouse delta, which we don't want for the drag float
+                imgui_io.WantSetMousePos    = true;
+            }
         }
     }
 }

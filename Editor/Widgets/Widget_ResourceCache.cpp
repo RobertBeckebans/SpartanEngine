@@ -25,8 +25,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "Widget_ResourceCache.h"
 #include "Resource/ResourceCache.h"
 #include "../ImGui/Source/imgui.h"
-#include <Core\Spartan_Object.h>
-#include "RHI/RHI_Object.h"
+#include "Core/Spartan_Object.h"
 //=================================
 
 //= NAMESPACES ==========
@@ -34,12 +33,12 @@ using namespace std;
 using namespace Spartan;
 //=======================
 
-Widget_ResourceCache::Widget_ResourceCache(Context* context) : Widget(context)
+Widget_ResourceCache::Widget_ResourceCache(Editor* editor) : Widget(editor)
 {
-	m_title			= "Resource Cache";
-	m_flags	        |= ImGuiWindowFlags_HorizontalScrollbar;
+    m_title            = "Resource Cache";
+    m_flags            |= ImGuiWindowFlags_HorizontalScrollbar;
     m_size          = ImVec2(1366, 768);
-	m_is_visible	= false;
+    m_is_visible    = false;
 }
 
 inline void print_memory(uint64_t memory)
@@ -60,14 +59,14 @@ inline void print_memory(uint64_t memory)
 
 void Widget_ResourceCache::Tick()
 {
-	auto resource_cache		    = m_context->GetSubsystem<ResourceCache>();
-	auto resources			    = resource_cache->GetByType();
-    const auto memory_usage_cpu	= resource_cache->GetMemoryUsageCpu() / 1000.0f / 1000.0f;
+    auto resource_cache            = m_context->GetSubsystem<ResourceCache>();
+    auto resources                = resource_cache->GetByType();
+    const auto memory_usage_cpu    = resource_cache->GetMemoryUsageCpu() / 1000.0f / 1000.0f;
     const auto memory_usage_gpu = resource_cache->GetMemoryUsageGpu() / 1000.0f / 1000.0f;
 
-	ImGui::Text("Resource count: %d, Memory usage cpu: %d Mb, Memory usage gpu: %d Mb", static_cast<uint32_t>(resources.size()), static_cast<uint32_t>(memory_usage_cpu), static_cast<uint32_t>(memory_usage_gpu));
-	ImGui::Separator();
-	ImGui::Columns(7, "##Widget_ResourceCache");
+    ImGui::Text("Resource count: %d, Memory usage cpu: %d Mb, Memory usage gpu: %d Mb", static_cast<uint32_t>(resources.size()), static_cast<uint32_t>(memory_usage_cpu), static_cast<uint32_t>(memory_usage_gpu));
+    ImGui::Separator();
+    ImGui::Columns(7, "##Widget_ResourceCache");
 
     // Set column width - Has to be done only once in order to allow for the user to resize them
     if (!m_column_width_set)
@@ -82,42 +81,35 @@ void Widget_ResourceCache::Tick()
     }
 
     // Set column titles
-	ImGui::Text("Type");            ImGui::NextColumn();
-	ImGui::Text("ID");              ImGui::NextColumn();
-	ImGui::Text("Name");            ImGui::NextColumn();
+    ImGui::Text("Type");            ImGui::NextColumn();
+    ImGui::Text("ID");              ImGui::NextColumn();
+    ImGui::Text("Name");            ImGui::NextColumn();
     ImGui::Text("Path");            ImGui::NextColumn();
-	ImGui::Text("Path (native)");   ImGui::NextColumn();
-	ImGui::Text("Size CPU");        ImGui::NextColumn();
+    ImGui::Text("Path (native)");   ImGui::NextColumn();
+    ImGui::Text("Size CPU");        ImGui::NextColumn();
     ImGui::Text("Size GPU");        ImGui::NextColumn();
-	ImGui::Separator();
+    ImGui::Separator();
 
     // Fill rows with resource information
-	for (const shared_ptr<IResource>& resource : resources)
-	{
-		if (Spartan_Object* object = dynamic_cast<Spartan_Object*>(resource.get()))
+    for (const shared_ptr<IResource>& resource : resources)
+    {
+        if (Spartan_Object* object = dynamic_cast<Spartan_Object*>(resource.get()))
         {
-		    // Type
-		    ImGui::Text(resource->GetResourceTypeCstr());					ImGui::NextColumn();
-		    // ID
-		    ImGui::Text(to_string(object->GetId()).c_str());		        ImGui::NextColumn();
-		    // Name
-            ImGui::Text(resource->GetResourceName().c_str());				ImGui::NextColumn();
+            // Type
+            ImGui::Text(resource->GetResourceTypeCstr());                    ImGui::NextColumn();
+            // ID
+            ImGui::Text(to_string(object->GetId()).c_str());                ImGui::NextColumn();
+            // Name
+            ImGui::Text(resource->GetResourceName().c_str());                ImGui::NextColumn();
             // Path
-            ImGui::Text(resource->GetResourceFilePath().c_str());		    ImGui::NextColumn();
-		    // Path (native)
-		    ImGui::Text(resource->GetResourceFilePathNative().c_str());		ImGui::NextColumn();
-		    // Memory CPU
+            ImGui::Text(resource->GetResourceFilePath().c_str());            ImGui::NextColumn();
+            // Path (native)
+            ImGui::Text(resource->GetResourceFilePathNative().c_str());        ImGui::NextColumn();
+            // Memory CPU
             print_memory(object->GetSizeCpu());                             ImGui::NextColumn();
             // Memory GPU
-            if (RHI_Object* rhi_object = dynamic_cast<RHI_Object*>(resource.get()))
-            {
-                print_memory(rhi_object->GetSizeGpu());                     ImGui::NextColumn();
-            }
-            else
-            {
-                print_memory(0);                                            ImGui::NextColumn();
-            }
+            print_memory(object->GetSizeGpu());                             ImGui::NextColumn();
         }
-	}
-	ImGui::Columns(1);
+    }
+    ImGui::Columns(1);
 }

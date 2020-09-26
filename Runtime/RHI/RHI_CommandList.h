@@ -21,80 +21,122 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ==============
-#include <vector>
+//= INCLUDES ===========================
+#include <array>
+#include <atomic>
 #include "RHI_Definition.h"
-//=========================
+#include "../Core/Spartan_Object.h"
+#include "../Rendering/Renderer_Enums.h"
+//======================================
 
 namespace Spartan
 {
-	class Profiler;
+    // Forward declarations
+    class Profiler;
     class Renderer;
-
-    enum RHI_Cmd_List_State
+    class Context;
+    namespace Math
     {
-        RHI_Cmd_List_Idle,
-        RHI_Cmd_List_Idle_Sync_Cpu_To_Gpu,
-        RHI_Cmd_List_Recording,
-        RHI_Cmd_List_Ended
+        class Rectangle;
+    }
+
+    enum class RHI_CommandListState : uint64_t
+    {
+        Idle,
+        Recording,
+        Submittable,
+        Submitted
     };
 
-	class SPARTAN_CLASS RHI_CommandList : public RHI_Object
-	{
-	public:
-		RHI_CommandList(uint32_t index, RHI_SwapChain* swap_chain, Context* context);
-		~RHI_CommandList();
+    class SPARTAN_CLASS RHI_CommandList : public Spartan_Object
+    {
+    public:
+        RHI_CommandList(uint32_t index, RHI_SwapChain* swap_chain, Context* context);
+        ~RHI_CommandList();
+    
+        // Command list
+        bool Begin();
+        bool Stop();
+        bool Submit();
+        bool Wait();
+        bool Reset();
+        bool Flush()
+        {
+            if (m_cmd_state == RHI_CommandListState::Recording)
+            {
+                const bool has_render_pass = m_render_pass_active;
+                if (has_render_pass)
+                {
+                    if (!EndRenderPass())
+                        return false;
+                }
 
-        // Passes
-        bool Begin(RHI_PipelineState& pipeline_state);
-        bool End();
+                if (!Stop())
+                    return false;
+
+                if (!Submit())
+                    return false;
+
+                if (!Begin())
+                    return false;
+
+                if (has_render_pass)
+                {
+                    if (!BeginRenderPass(*m_pipeline_state))
+                        return false;
+                }
+            }
+
+            m_flushed = true;
+            return true;
+        }
+
+        // Render pass
+        bool BeginRenderPass(RHI_PipelineState& pipeline_state);
+        bool EndRenderPass();
 
         // Clear
-        void Clear(RHI_PipelineState& pipeline_state);
+        void ClearPipelineStateRenderTargets(RHI_PipelineState& pipeline_state);
+        void ClearRenderTarget(RHI_Texture* texture, const uint32_t color_index = 0, const uint32_t depth_stencil_index = 0, const bool storage = false, const Math::Vector4& clear_color = rhi_color_load, const float clear_depth = rhi_depth_load, const uint32_t clear_stencil = rhi_stencil_load);
 
-		// Draw/Dispatch
-		void Draw(uint32_t vertex_count);
-		void DrawIndexed(uint32_t index_count, uint32_t index_offset = 0, uint32_t vertex_offset = 0);
-        void Dispatch(uint32_t x, uint32_t y, uint32_t z = 1) const;
-
-		// Viewport
-		void SetViewport(const RHI_Viewport& viewport) const;
-
+        // Draw
+        bool Draw(uint32_t vertex_count);
+        bool DrawIndexed(uint32_t index_count, uint32_t index_offset = 0, uint32_t vertex_offset = 0);
+        
+        // Dispatch
+        bool Dispatch(uint32_t x, uint32_t y, uint32_t z, bool async = false);
+        
+        // Viewport
+        void SetViewport(const RHI_Viewport& viewport) const;
+        
         // Scissor
-		void SetScissorRectangle(const Math::Rectangle& scissor_rectangle) const;
-
-		// Vertex buffer
-		void SetBufferVertex(const RHI_VertexBuffer* buffer);
-        inline void SetBufferVertex(const std::shared_ptr<RHI_VertexBuffer>& buffer) { SetBufferVertex(buffer.get()); }
-
-		// Index buffer
-		void SetBufferIndex(const RHI_IndexBuffer* buffer);
-        inline void SetBufferIndex(const std::shared_ptr<RHI_IndexBuffer>& buffer) { SetBufferIndex(buffer.get()); }
-
-        // Compute shader
-        void SetShaderCompute(const RHI_Shader* shader) const;
-        inline void SetShaderCompute(const std::shared_ptr<RHI_Shader>& shader) const { SetShaderCompute(shader.get()); }
-
-		// Constant buffer
-        void SetConstantBuffer(const uint32_t slot, const uint8_t scope, RHI_ConstantBuffer* constant_buffer) const;
-        inline void SetConstantBuffer(const uint32_t slot, const uint8_t scope, const std::shared_ptr<RHI_ConstantBuffer>& constant_buffer) const { SetConstantBuffer(slot, scope, constant_buffer.get()); }
-
-		// Sampler
+        void SetScissorRectangle(const Math::Rectangle& scissor_rectangle) const;
+        
+        // Vertex buffer
+        void SetBufferVertex(const RHI_VertexBuffer* buffer, const uint64_t offset = 0);
+        
+        // Index buffer
+        void SetBufferIndex(const RHI_IndexBuffer* buffer, const uint64_t offset = 0);
+        
+        // Constant buffer
+        bool SetConstantBuffer(const uint32_t slot, const uint8_t scope, RHI_ConstantBuffer* constant_buffer) const;
+        inline bool SetConstantBuffer(const uint32_t slot, const uint8_t scope, const std::shared_ptr<RHI_ConstantBuffer>& constant_buffer) const { return SetConstantBuffer(slot, scope, constant_buffer.get()); }
+        
+        // Sampler
         void SetSampler(const uint32_t slot, RHI_Sampler* sampler) const;
         inline void SetSampler(const uint32_t slot, const std::shared_ptr<RHI_Sampler>& sampler) const { SetSampler(slot, sampler.get()); }
-
-		// Texture
-        void SetTexture(const uint32_t slot, RHI_Texture* texture);
-        inline void SetTexture(const uint32_t slot, const std::shared_ptr<RHI_Texture>& texture) { SetTexture(slot, texture.get()); }
         
-        // Submit/Flush
-		bool Submit();
-        bool Flush();
-
+        // Texture
+        void SetTexture(const uint32_t slot, RHI_Texture* texture, const bool storage = false);
+        inline void SetTexture(const RendererBindingsUav slot, RHI_Texture* texture)                        { SetTexture(static_cast<uint32_t>(slot), texture, true); }
+        inline void SetTexture(const RendererBindingsUav slot, const std::shared_ptr<RHI_Texture>& texture) { SetTexture(static_cast<uint32_t>(slot), texture.get(), true); }
+        inline void SetTexture(const RendererBindingsSrv slot, RHI_Texture* texture)                        { SetTexture(static_cast<uint32_t>(slot), texture, false); }
+        inline void SetTexture(const RendererBindingsSrv slot, const std::shared_ptr<RHI_Texture>& texture) { SetTexture(static_cast<uint32_t>(slot), texture.get(), false); }
+        
         // Timestamps
-        bool Timestamp_Start(void* query_disjoint = nullptr, void* query_start = nullptr) const;
-        bool Timestamp_End(void* query_disjoint = nullptr, void* query_end = nullptr) const;
-        float Timestamp_GetDuration(void* query_disjoint = nullptr, void* query_start = nullptr, void* query_end = nullptr);
+        bool Timestamp_Start(void* query_disjoint = nullptr, void* query_start = nullptr);
+        bool Timestamp_End(void* query_disjoint = nullptr, void* query_end = nullptr);
+        float Timestamp_GetDuration(void* query_disjoint, void* query_start, void* query_end, const uint32_t pass_index);
 
         static uint32_t Gpu_GetMemory(RHI_Device* rhi_device);
         static uint32_t Gpu_GetMemoryUsed(RHI_Device* rhi_device);
@@ -102,34 +144,49 @@ namespace Spartan
         static void Gpu_QueryRelease(void*& query_object);
         
         // Misc
-        void* GetResource_CommandBuffer() const { return m_cmd_buffer; }
+        void ResetDescriptorCache();
+        void* GetResource_CommandBuffer()   const { return m_cmd_buffer; }
+        bool IsRecording()                  const { return m_cmd_state == RHI_CommandListState::Recording; }
+        bool IsSubmitted()                  const { return m_cmd_state == RHI_CommandListState::Submitted; }
+        bool IsIdle()                       const { return m_cmd_state == RHI_CommandListState::Idle; }
+        void*& GetProcessedSemaphore()            { return m_processed_semaphore; }
 
-	private:
-        void MarkAndProfileStart(const RHI_PipelineState* pipeline_state);
-        void MarkAndProfileEnd(const RHI_PipelineState* pipeline_state);
-        void BeginRenderPass();
-        bool BindDescriptorSet();
+    private:
+        void Timeblock_Start(const RHI_PipelineState* pipeline_state);
+        void Timeblock_End(const RHI_PipelineState* pipeline_state);
+        bool Deferred_BeginRenderPass();
+        bool Deferred_BindPipeline();
+        bool Deferred_BindDescriptorSet();
         bool OnDraw();
 
-        uint32_t m_pass_index                   = 0;
-        RHI_Cmd_List_State m_cmd_state          = RHI_Cmd_List_Idle;
-		RHI_Pipeline* m_pipeline	            = nullptr; 
-        RHI_SwapChain* m_swap_chain             = nullptr;
-        Renderer* m_renderer                    = nullptr;
-        RHI_PipelineCache* m_pipeline_cache     = nullptr;
-        RHI_DescriptorCache* m_descriptor_cache = nullptr;
-        RHI_PipelineState* m_pipeline_state     = nullptr;
-        RHI_Device* m_rhi_device                = nullptr;
-        Profiler* m_profiler                    = nullptr;
-        void* m_cmd_buffer                      = nullptr;
-        void* m_cmd_list_consumed_fence         = nullptr;
-        void* m_query_pool                      = nullptr;
-        bool m_render_pass_begun_pipeline_bound = false;
-        std::vector<uint64_t> m_timestamps;
-        std::vector<bool> m_passes_active;
+        std::atomic<RHI_CommandListState> m_cmd_state   = RHI_CommandListState::Idle;
+        RHI_Pipeline* m_pipeline                        = nullptr; 
+        RHI_SwapChain* m_swap_chain                     = nullptr;
+        Renderer* m_renderer                            = nullptr;
+        RHI_PipelineCache* m_pipeline_cache             = nullptr;
+        RHI_DescriptorCache* m_descriptor_cache         = nullptr;
+        RHI_PipelineState* m_pipeline_state             = nullptr;
+        RHI_Device* m_rhi_device                        = nullptr;
+        Profiler* m_profiler                            = nullptr;
+        void* m_cmd_buffer                              = nullptr;
+        void* m_processed_fence                         = nullptr;
+        void* m_processed_semaphore                     = nullptr;
+        void* m_query_pool                              = nullptr;
+        bool m_render_pass_active                       = false;
+        bool m_pipeline_active                          = false;
+        bool m_flushed                                  = false;
+        static bool memory_query_support;
+        std::mutex m_mutex_reset;
+
+        // Profiling
+        uint32_t m_timestamp_index = 0;
+        static const uint32_t m_max_timestamps = 256;
+        std::array<uint64_t, m_max_timestamps> m_timestamps;
 
         // Variables to minimise state changes
-        uint32_t m_set_id_buffer_vertex = 0;
-        uint32_t m_set_id_buffer_pixel  = 0;
-	};
+        uint32_t m_vertex_buffer_id     = 0;
+        uint64_t m_vertex_buffer_offset = 0;
+        uint32_t m_index_buffer_id      = 0;
+        uint64_t m_index_buffer_offset  = 0;
+    };
 }

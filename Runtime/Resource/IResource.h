@@ -21,46 +21,47 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ==================
+//= INCLUDES ======================
 #include <memory>
 #include "../Core/Context.h"
 #include "../Core/FileSystem.h"
+#include "../Core/Spartan_Object.h"
 #include "../Logging/Log.h"
-//=============================
+//=================================
 
 namespace Spartan
 {
-	enum Resource_Type
-	{
-		Resource_Unknown,
-		Resource_Texture,
-		Resource_Texture2d,
-		Resource_TextureCube,
-		Resource_Audio,
-		Resource_Material,	
-		Resource_Mesh,
-		Resource_Model,
-		Resource_Cubemap,	
-		Resource_Animation,
-		Resource_Font,
-		Resource_Shader
-	};
+    enum class ResourceType
+    {
+        Unknown,
+        Texture,
+        Texture2d,
+        TextureCube,
+        Audio,
+        Material,    
+        Mesh,
+        Model,
+        Cubemap,    
+        Animation,
+        Font,
+        Shader
+    };
 
-	enum LoadState
-	{
-		LoadState_Idle,
-		LoadState_Started,
-		LoadState_Completed,
-		LoadState_Failed
-	};
+    enum LoadState
+    {
+        Idle,
+        Started,
+        Completed,
+        Failed
+    };
 
-	class SPARTAN_CLASS IResource
-	{
-	public:
-		IResource(Context* context, Resource_Type type);
-		virtual ~IResource() = default;
+    class SPARTAN_CLASS IResource : public Spartan_Object
+    {
+    public:
+        IResource(Context* context, ResourceType type);
+        virtual ~IResource() = default;
 
-		void SetResourceFilePath(const std::string& path)
+        void SetResourceFilePath(const std::string& path)
         {
             const bool is_native_file = FileSystem::IsEngineMaterialFile(path) || FileSystem::IsEngineModelFile(path);
 
@@ -92,36 +93,35 @@ namespace Spartan
             m_resource_directory            = FileSystem::GetDirectoryFromFilePath(file_path_relative);
         }
         
-        Resource_Type GetResourceType()                 const { return m_resource_type; }
+        ResourceType GetResourceType()                  const { return m_resource_type; }
         const char* GetResourceTypeCstr()               const { return typeid(*this).name(); }
         bool HasFilePathNative()                        const { return !m_resource_file_path_native.empty(); }
         const std::string& GetResourceFilePath()        const { return m_resource_file_path_foreign; }
         const std::string& GetResourceFilePathNative()  const { return m_resource_file_path_native; }     
         const std::string& GetResourceName()            const { return m_resource_name; }
-		const std::string& GetResourceFileName()        const { return m_resource_name; }
-		const std::string& GetResourceDirectory()       const { return m_resource_directory; }
+        const std::string& GetResourceFileName()        const { return m_resource_name; }
+        const std::string& GetResourceDirectory()       const { return m_resource_directory; }
 
 
         // Misc
-		LoadState GetLoadState() const { return m_load_state; }
+        LoadState GetLoadState() const { return m_load_state; }
 
-		// IO
-		virtual bool SaveToFile(const std::string& file_path)	{ return true; }
-		virtual bool LoadFromFile(const std::string& file_path)	{ return true; }
+        // IO
+        virtual bool SaveToFile(const std::string& file_path)    { return true; }
+        virtual bool LoadFromFile(const std::string& file_path)    { return true; }
 
-		// Type
-		template <typename T>
-		static constexpr Resource_Type TypeToEnum();
+        // Type
+        template <typename T>
+        static constexpr ResourceType TypeToEnum();
 
-	protected:
-		Resource_Type m_resource_type	= Resource_Unknown;
-		LoadState m_load_state			= LoadState_Idle;
-		Context* m_context				= nullptr;
+    protected:
+        ResourceType m_resource_type    = ResourceType::Unknown;
+        LoadState m_load_state            = Idle;
 
-	private:
-		std::string m_resource_name;
+    private:
+        std::string m_resource_name;
         std::string m_resource_directory;
-		std::string m_resource_file_path_native;
+        std::string m_resource_file_path_native;
         std::string m_resource_file_path_foreign;
-	};
+    };
 }

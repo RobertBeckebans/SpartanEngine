@@ -19,72 +19,70 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-float3 LumaSharpen(float2 texCoord, Texture2D sourceTexture, float2 resolution, float sharp_strength, float sharp_clamp)
+//= INCLUDES ==============
+#include "Common.hlsl"
+#include "LumaSharpen.hlsl"
+//=========================
+
+// 0 - Simple
+// 1 - LumaSharpen
+// 2 - FidelityFX Contrast Adaptive Sharpening
+#define SHARPENING_METHOD 2
+
+#if SHARPENING_METHOD == 0
+
+float3 Sharpen(uint2 thread_id)
 {
-	/*
-		LumaSharpen 1.4.1
-		original hlsl by Christian Cann Schuldt Jensen ~ CeeJay.dk
-		port to glsl by Anon
-		ported back to hlsl and modified by Panos karabelas
-		It blurs the original pixel with the surrounding pixels and then subtracts this blur to sharpen the image.
-		It does this in luma to avoid color artifacts and allows limiting the maximum sharpning to avoid or lessen halo artifacts.
-		This is similar to using Unsharp Mask in Photoshop.
-	*/
-	
-	// -- Sharpening --
-	//#define sharp_strength 1.0f   //[0.10 to 3.00] Strength of the sharpening
-	//#define sharp_clamp    0.35f  //[0.000 to 1.000] Limits maximum amount of sharpening a pixel receives - Default is 0.035
-	
-	// -- Advanced sharpening settings --
-	#define offset_bias 1.0f  //[0.0 to 6.0] Offset bias adjusts the radius of the sampling pattern.
-	#define CoefLuma float3(0.2126f, 0.7152f, 0.0722f)      // BT.709 & sRBG luma coefficient (Monitors and HD Television)
+    const uint2 dx = uint2(1, 0);
+    const uint2 dy = uint2(0, 1);
 
-	float4 colorInput = sourceTexture.Sample(sampler_point_clamp, texCoord);  	
-	float3 ori = colorInput.rgb;
-
-	// -- Combining the strength and luma multipliers --
-	float3 sharp_strength_luma = (CoefLuma * sharp_strength); //I'll be combining even more multipliers with it later on
-	
-	// -- Gaussian filter --
-	//   [ .25, .50, .25]     [ 1 , 2 , 1 ]
-	//   [ .50,   1, .50]  =  [ 2 , 4 , 2 ]
- 	//   [ .25, .50, .25]     [ 1 , 2 , 1 ]
-
-	float px = 1.0f / resolution[0];
-	float py = 1.0f / resolution[1];
-
-	float3 blur_ori = sourceTexture.Sample(sampler_bilinear_clamp, texCoord + float2(px,-py) * 0.5f * offset_bias).rgb; // South East
-	blur_ori += sourceTexture.Sample(sampler_bilinear_clamp, texCoord + float2(-px,-py) * 0.5f * offset_bias).rgb;  // South West
-	blur_ori += sourceTexture.Sample(sampler_bilinear_clamp, texCoord + float2(px,py) * 0.5f * offset_bias).rgb; // North East
-	blur_ori += sourceTexture.Sample(sampler_bilinear_clamp, texCoord + float2(-px,py) * 0.5f * offset_bias).rgb; // North West
-	blur_ori *= 0.25f;  // ( /= 4) Divide by the number of texture fetches
-
-	// -- Calculate the sharpening --
-	float3 sharp = ori - blur_ori;  //Subtracting the blurred image from the original image
-
-	// -- Adjust strength of the sharpening and clamp it--
-	float4 sharp_strength_luma_clamp = float4(sharp_strength_luma * (0.5f / sharp_clamp), 0.5f); //Roll part of the clamp into the dot
-
-	float sharp_luma = clamp((dot(float4(sharp, 1.0f), sharp_strength_luma_clamp)), 0.0f, 1.0f); //Calculate the luma, adjust the strength, scale up and clamp
-	sharp_luma = (sharp_clamp * 2.0f) * sharp_luma - sharp_clamp; //scale down
-
-	// -- Combining the values to get the final sharpened pixel	--
-	colorInput.rgb = colorInput.rgb + sharp_luma;    // Add the sharpening to the input color.
-	return clamp(colorInput, 0.0f, 1.0f).rgb;
+    float4 up       = tex[thread_id - dy];
+    float4 down     = tex[thread_id + dy];
+    float4 center   = tex[thread_id];
+    float4 right    = tex[thread_id + dx];
+    float4 left     = tex[thread_id - dx];
+    
+    return saturate(center + (4 * center - up - down - left - right) * g_sharpen_strength);
 }
 
-float4 SharpenTaa(float2 uv, Texture2D source_texture)
+#elif SHARPENING_METHOD == 1
+
+float3 Sharpen(uint2 thread_id)
 {
-	float intensity = 0.2f;
+    const float2 uv             = (thread_id.xy + 0.5f) / g_resolution;
+    const float sharpen_clamp   = 0.035f; // Limits maximum amount of sharpening a pixel receives - Default is 0.035;
+    return LumaSharpen(uv, tex, g_resolution, g_sharpen_strength, sharpen_clamp);
+}
 
-	float2 dx = float2(g_texel_size.x, 0.0f);
-	float2 dy = float2(0.0f, g_texel_size.y);
+#elif SHARPENING_METHOD == 2
 
-	float4 up 		= source_texture.Sample(sampler_bilinear_clamp, uv - dy);
-	float4 down 	= source_texture.Sample(sampler_bilinear_clamp, uv + dy);
-	float4 center 	= source_texture.Sample(sampler_bilinear_clamp, uv);
-	float4 right 	= source_texture.Sample(sampler_bilinear_clamp, uv + dx);
-	float4 left 	= source_texture.Sample(sampler_bilinear_clamp, uv - dx);
-	
-	return saturate(center + (4 * center - up - down - left - right) * intensity);
+#define A_GPU 1
+#define A_HLSL 1
+#include "ffx_a.h"
+float3 CasLoad(float2 pos) {return tex[pos].rgb;}
+// Lets you transform input from the load into a linear color space between 0 and 1. See ffx_cas.h. In this case, our input is already linear and between 0 and 1.
+void CasInput(inout float r, inout float g, inout float b){}
+#include "ffx_cas.h"
+float3 Sharpen(uint2 thread_id)
+{
+    float4 const0;
+    float4 const1;
+    CasSetup(const0, const1, g_sharpen_strength, g_resolution.x, g_resolution.y, g_resolution.x, g_resolution.y);
+    float3 color = 0.0f;
+    CasFilter(color.r, color.g, color.b, thread_id, const0, const1, true);
+    return color;
+}
+
+#endif
+
+[numthreads(thread_group_count_x, thread_group_count_y, 1)]
+void mainCS(uint3 thread_id : SV_DispatchThreadID)
+{
+    if (thread_id.x >= uint(g_resolution.x) || thread_id.y >= uint(g_resolution.y))
+        return;
+    
+    const float3 color  = Sharpen(thread_id.xy);
+    const float a       = tex[thread_id.xy].a;
+    
+    tex_out_rgba[thread_id.xy] = float4(color, a);
 }

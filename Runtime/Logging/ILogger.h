@@ -21,17 +21,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ==================
+//= INCLUDES ===========================
 #include <string>
-#include "../Core/EngineDefs.h"
-//=============================
+#include "../Core/Spartan_Definitions.h"
+//======================================
 
 namespace Spartan
 {
-	class SPARTAN_CLASS ILogger
-	{
-	public:
-		virtual ~ILogger() = default;
+    class SPARTAN_CLASS ILogger
+    {
+    public:
+        virtual ~ILogger() = default;
         virtual void Log(const std::string& log, uint32_t type) = 0;
-	};
+    };
 }

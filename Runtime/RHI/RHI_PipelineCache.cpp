@@ -20,6 +20,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
 //= INCLUDES ===================
+#include "Spartan.h"
 #include "RHI_PipelineCache.h"
 #include "RHI_Texture.h"
 #include "RHI_Pipeline.h"
@@ -45,11 +46,24 @@ namespace Spartan
         // Render target layout transitions
         {
             // Color
-            for (auto i = 0; i < state_max_render_target_count; i++)
             {
-                if (RHI_Texture* texture = pipeline_state.render_target_color_textures[i])
+                // Swapchain
+                if (RHI_SwapChain* swapchain = pipeline_state.render_target_swapchain)
                 {
-                    texture->SetLayout(RHI_Image_Shader_Read_Only_Optimal, cmd_list);
+                    swapchain->SetLayout(RHI_Image_Present_Src, cmd_list);
+                    pipeline_state.render_target_color_layout_initial   = RHI_Image_Present_Src;
+                    pipeline_state.render_target_color_layout_final     = RHI_Image_Present_Src;
+                }
+
+                // Texture
+                for (auto i = 0; i < rhi_max_render_target_count; i++)
+                {
+                    if (RHI_Texture* texture = pipeline_state.render_target_color_textures[i])
+                    {
+                        texture->SetLayout(RHI_Image_Color_Attachment_Optimal, cmd_list);
+                        pipeline_state.render_target_color_layout_initial   = RHI_Image_Color_Attachment_Optimal;
+                        pipeline_state.render_target_color_layout_final     = RHI_Image_Color_Attachment_Optimal;
+                    }
                 }
             }
 
@@ -57,12 +71,8 @@ namespace Spartan
             if (RHI_Texture* texture = pipeline_state.render_target_depth_texture)
             {
                 texture->SetLayout(RHI_Image_Depth_Stencil_Attachment_Optimal, cmd_list);
-            }
-
-            // Swapchain
-            if (RHI_SwapChain* swapchain = pipeline_state.render_target_swapchain)
-            {
-                swapchain->SetLayout(RHI_Image_Present_Src, cmd_list);
+                pipeline_state.render_target_depth_layout_initial   = RHI_Image_Depth_Stencil_Attachment_Optimal;
+                pipeline_state.render_target_depth_layout_final     = RHI_Image_Depth_Stencil_Attachment_Optimal;
             }
         }
 
@@ -71,12 +81,13 @@ namespace Spartan
         size_t hash = pipeline_state.GetHash();
 
         // If no pipeline exists for this state, create one
-        if (m_cache.find(hash) == m_cache.end())
+        auto it = m_cache.find(hash);
+        if (it == m_cache.end())
         {
             // Cache a new pipeline
-            m_cache.emplace(make_pair(hash, move(make_shared<RHI_Pipeline>(m_rhi_device, pipeline_state, descriptor_set_layout))));
+            it = m_cache.emplace(make_pair(hash, move(make_shared<RHI_Pipeline>(m_rhi_device, pipeline_state, descriptor_set_layout)))).first;
         }
 
-        return m_cache[hash].get();
+        return it->second.get();
     }
 }

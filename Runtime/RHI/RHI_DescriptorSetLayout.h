@@ -21,42 +21,42 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ==============
-#include "RHI_Object.h"
-#include "RHI_Definition.h"
+//= INCLUDES ======================
+#include "../Core/Spartan_Object.h"
 #include <unordered_map>
 #include <vector>
-//=========================
+#include <array>
+#include "RHI_Desctiptor.h"
+//=================================
 
 namespace Spartan
 {
-    class SPARTAN_CLASS RHI_DescriptorSetLayout : public RHI_Object
+    class SPARTAN_CLASS RHI_DescriptorSetLayout : public Spartan_Object
     {
     public:
         RHI_DescriptorSetLayout() = default;
-        RHI_DescriptorSetLayout(const RHI_Device* rhi_device, const std::vector<RHI_Descriptor>& descriptors);
+        RHI_DescriptorSetLayout(const RHI_Device* rhi_device, const std::vector<RHI_Descriptor>& descriptors, const std::string& name);
         ~RHI_DescriptorSetLayout();
 
-        void SetConstantBuffer(const uint32_t slot, RHI_ConstantBuffer* constant_buffer);
+        bool SetConstantBuffer(const uint32_t slot, RHI_ConstantBuffer* constant_buffer);
         void SetSampler(const uint32_t slot, RHI_Sampler* sampler);
-        void SetTexture(const uint32_t slot, RHI_Texture* texture);
+        void SetTexture(const uint32_t slot, RHI_Texture* texture, const bool storage);
 
         bool GetResource_DescriptorSet(RHI_DescriptorCache* descriptor_cache, void*& descriptor_set);
-        void* GetResource_DescriptorSetLayout()             const { return m_descriptor_set_layout; }
-        const std::vector<uint32_t>& GetDynamicOffsets()    const { return m_constant_buffer_dynamic_offsets; }
-        uint32_t GetDescriptorSetCount()                    const { return static_cast<uint32_t>(m_descriptor_sets.size()); }
-
-        void NeedsToBind() { m_needs_to_bind = true; }
+        const std::array<uint32_t, rhi_max_constant_buffer_count> GetDynamicOffsets() const;
+        uint32_t GetDynamicOffsetCount() const;
+        void* GetResource_DescriptorSetLayout() const { return m_descriptor_set_layout; }      
+        uint32_t GetDescriptorSetCount()        const { return static_cast<uint32_t>(m_descriptor_sets.size()); }
+        void NeedsToBind()                            { m_needs_to_bind = true; }
 
     private:
-        std::size_t ComputeDescriptorSetHash(const std::vector<RHI_Descriptor>& descriptors);
         void* CreateDescriptorSet(const std::size_t hash, const RHI_DescriptorCache* descriptor_cache);
         void UpdateDescriptorSet(void* descriptor_set, const std::vector<RHI_Descriptor>& descriptors);
         void* CreateDescriptorSetLayout(const std::vector<RHI_Descriptor>& descriptors);
 
         // Misc
         bool m_needs_to_bind = false;
-        std::vector<uint32_t> m_constant_buffer_dynamic_offsets;
+        std::array<uint32_t, rhi_max_constant_buffer_count> m_dynamic_offsets;
 
         // Descriptors
         std::vector<RHI_Descriptor> m_descriptors;
@@ -66,6 +66,7 @@ namespace Spartan
 
         // Descriptor set layout
         void* m_descriptor_set_layout = nullptr;
+        size_t m_descriptor_set_layout_hash = 0;
 
         // Dependencies
         const RHI_Device* m_rhi_device = nullptr;

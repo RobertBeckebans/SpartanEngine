@@ -20,6 +20,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
 //= INCLUDES =======================
+#include "Spartan.h"
 #include "RHI_DescriptorSetLayout.h"
 #include "RHI_ConstantBuffer.h"
 #include "RHI_Sampler.h"
@@ -35,59 +36,60 @@ using namespace std;
 
 namespace Spartan
 {
-    RHI_DescriptorSetLayout::RHI_DescriptorSetLayout(const RHI_Device* rhi_device, const std::vector<RHI_Descriptor>& descriptors)
+    RHI_DescriptorSetLayout::RHI_DescriptorSetLayout(const RHI_Device* rhi_device, const std::vector<RHI_Descriptor>& descriptors, const string& name)
     {
         m_rhi_device            = rhi_device;
         m_descriptors           = descriptors;
+        m_name                  = name;
         m_descriptor_set_layout = CreateDescriptorSetLayout(m_descriptors);
+        m_dynamic_offsets.fill(rhi_dynamic_offset_empty);
+
+        for (const RHI_Descriptor& descriptor : descriptors)
+        {
+            Utility::Hash::hash_combine(m_descriptor_set_layout_hash, descriptor.GetHash());
+        }
     }
 
-    void RHI_DescriptorSetLayout::SetConstantBuffer(const uint32_t slot, RHI_ConstantBuffer* constant_buffer)
+    bool RHI_DescriptorSetLayout::SetConstantBuffer(const uint32_t slot, RHI_ConstantBuffer* constant_buffer)
     {
         for (RHI_Descriptor& descriptor : m_descriptors)
         {
-            const bool is_dynamic   = constant_buffer->IsDynamic();
-            const bool is_same_type = (!is_dynamic && descriptor.type == RHI_Descriptor_ConstantBuffer) || (is_dynamic && descriptor.type == RHI_Descriptor_ConstantBufferDynamic);
-            const bool is_same_slot = descriptor.slot == slot + m_rhi_device->GetContextRhi()->shader_shift_buffer;
-            const bool is_reference = is_same_type && is_same_slot;
-
-            if (is_reference)
+            if ((descriptor.type == RHI_Descriptor_ConstantBuffer) && descriptor.slot == slot + rhi_shader_shift_buffer)
             {
                 // Determine if the descriptor set needs to bind
-                m_needs_to_bind = descriptor.resource   != constant_buffer->GetResource()   ? true : m_needs_to_bind;                                                                                       // affects vkUpdateDescriptorSets
-                m_needs_to_bind = descriptor.offset     != constant_buffer->GetOffset()     ? true : m_needs_to_bind;                                                                                       // affects vkUpdateDescriptorSets
-                m_needs_to_bind = descriptor.range      != constant_buffer->GetStride()     ? true : m_needs_to_bind;                                                                                       // affects vkUpdateDescriptorSets
-                m_needs_to_bind = !m_constant_buffer_dynamic_offsets.empty() ? (m_constant_buffer_dynamic_offsets[0] != constant_buffer->GetOffsetDynamic() ? true : m_needs_to_bind) : m_needs_to_bind;    // affects vkCmdBindDescriptorSets 
+                m_needs_to_bind = descriptor.resource   != constant_buffer->GetResource()   ? true : m_needs_to_bind; // affects vkUpdateDescriptorSets
+                m_needs_to_bind = descriptor.offset     != constant_buffer->GetOffset()     ? true : m_needs_to_bind; // affects vkUpdateDescriptorSets
+                m_needs_to_bind = descriptor.range      != constant_buffer->GetStride()     ? true : m_needs_to_bind; // affects vkUpdateDescriptorSets
+
+                // Keep track of dynamic offsets
+                if (constant_buffer->IsDynamic())
+                {
+                    const uint32_t dynamic_offset = constant_buffer->GetOffsetDynamic();
+
+                    if (m_dynamic_offsets[slot] != dynamic_offset)
+                    {
+                        m_dynamic_offsets[slot] = dynamic_offset;
+                        m_needs_to_bind = true; // affects vkCmdBindDescriptorSets
+                    }
+                }
 
                 // Update
                 descriptor.resource = constant_buffer->GetResource();
                 descriptor.offset   = constant_buffer->GetOffset();
                 descriptor.range    = constant_buffer->GetStride();
 
-                // Update the dynamic offset.
-                // Note: This is not directly related to the descriptor, it's a value that gets set when vkCmdBindDescriptorSets is called, just before a draw call.
-                if (is_dynamic)
-                {
-                    if (m_constant_buffer_dynamic_offsets.empty())
-                    {
-                        m_constant_buffer_dynamic_offsets.emplace_back(constant_buffer->GetOffsetDynamic());
-                    }
-                    else
-                    {
-                        m_constant_buffer_dynamic_offsets[0] = constant_buffer->GetOffsetDynamic();
-                    }
-                }
-
-                break;
+                return true;
             }
         }
+
+        return false;
     }
 
     void RHI_DescriptorSetLayout::SetSampler(const uint32_t slot, RHI_Sampler* sampler)
     {
         for (RHI_Descriptor& descriptor : m_descriptors)
         {
-            if (descriptor.type == RHI_Descriptor_Sampler && descriptor.slot == slot + m_rhi_device->GetContextRhi()->shader_shift_sampler)
+            if (descriptor.type == RHI_Descriptor_Sampler && descriptor.slot == slot + rhi_shader_shift_sampler)
             {
                 // Determine if the descriptor set needs to bind
                 m_needs_to_bind = descriptor.resource != sampler->GetResource() ? true : m_needs_to_bind; // affects vkUpdateDescriptorSets
@@ -100,7 +102,7 @@ namespace Spartan
         }
     }
 
-    void RHI_DescriptorSetLayout::SetTexture(const uint32_t slot, RHI_Texture* texture)
+    void RHI_DescriptorSetLayout::SetTexture(const uint32_t slot, RHI_Texture* texture, const bool storage)
     {
         if (!texture->IsSampled())
         {
@@ -116,13 +118,15 @@ namespace Spartan
 
         for (RHI_Descriptor& descriptor : m_descriptors)
         {
-            if (descriptor.type == RHI_Descriptor_Texture && descriptor.slot == slot + m_rhi_device->GetContextRhi()->shader_shift_texture)
+            const uint32_t slot_match = slot + (storage ? rhi_shader_shift_storage_texture : rhi_shader_shift_texture);
+
+            if (descriptor.type == RHI_Descriptor_Texture && descriptor.slot == slot_match)
             {
                 // Determine if the descriptor set needs to bind
-                m_needs_to_bind = descriptor.resource != texture->Get_View_Texture() ? true : m_needs_to_bind; // affects vkUpdateDescriptorSets
+                m_needs_to_bind = descriptor.resource != texture->Get_Resource_View() ? true : m_needs_to_bind; // affects vkUpdateDescriptorSets
 
                 // Update
-                descriptor.resource = texture->Get_View_Texture();
+                descriptor.resource = texture->Get_Resource_View();
                 descriptor.layout   = texture->GetLayout();
 
                 break;
@@ -132,11 +136,16 @@ namespace Spartan
 
     bool RHI_DescriptorSetLayout::GetResource_DescriptorSet(RHI_DescriptorCache* descriptor_cache, void*& descriptor_set)
     {
-        // Get the hash of the current state of the descriptors
-        const size_t hash = ComputeDescriptorSetHash(m_descriptors);
+        // Integrate resource into the hash
+        size_t hash = m_descriptor_set_layout_hash;
+        for (const RHI_Descriptor& descriptor : m_descriptors)
+        {
+            Utility::Hash::hash_combine(hash, descriptor.resource);
+        }
 
         // If we don't have a descriptor set to match that state, create one
-        if (m_descriptor_sets.find(hash) == m_descriptor_sets.end())
+        const auto it = m_descriptor_sets.find(hash);
+        if (it == m_descriptor_sets.end())
         {
             // Only allocate if the descriptor set cache hash enough capacity
             if (descriptor_cache->HasEnoughCapacity())
@@ -152,7 +161,7 @@ namespace Spartan
         {
             if (m_needs_to_bind)
             {
-                descriptor_set  = m_descriptor_sets[hash];
+                descriptor_set  = it->second;
                 m_needs_to_bind = false;
             }
         }
@@ -160,21 +169,37 @@ namespace Spartan
         return true;
     }
 
-    size_t RHI_DescriptorSetLayout::ComputeDescriptorSetHash(const vector<RHI_Descriptor>& descriptors)
+    const std::array<uint32_t, Spartan::rhi_max_constant_buffer_count> RHI_DescriptorSetLayout::GetDynamicOffsets() const
     {
-        size_t hash = 0;
+        // vkCmdBindDescriptorSets expects an array without empty values
 
-        for (const RHI_Descriptor& descriptor : descriptors)
+        std::array<uint32_t, Spartan::rhi_max_constant_buffer_count> dynamic_offsets;
+        dynamic_offsets.fill(0);
+
+        uint32_t j = 0;
+        for (uint32_t i = 0; i < rhi_max_constant_buffer_count; i++)
         {
-            Utility::Hash::hash_combine(hash, descriptor.slot);
-            Utility::Hash::hash_combine(hash, descriptor.stage);
-            Utility::Hash::hash_combine(hash, descriptor.offset);
-            Utility::Hash::hash_combine(hash, descriptor.range);
-            Utility::Hash::hash_combine(hash, descriptor.resource);
-            Utility::Hash::hash_combine(hash, static_cast<uint32_t>(descriptor.type));
-            Utility::Hash::hash_combine(hash, static_cast<uint32_t>(descriptor.layout));
+            if (m_dynamic_offsets[i] != rhi_dynamic_offset_empty)
+            {
+                dynamic_offsets[j++] = m_dynamic_offsets[i];
+            }
         }
 
-        return hash;
+        return dynamic_offsets;
+    }
+
+    uint32_t RHI_DescriptorSetLayout::GetDynamicOffsetCount() const
+    {
+        uint32_t dynamic_offset_count = 0;
+
+        for (uint32_t i = 0; i < rhi_max_constant_buffer_count; i++)
+        {
+            if (m_dynamic_offsets[i] != rhi_dynamic_offset_empty)
+            {
+                dynamic_offset_count++;
+            }
+        }
+
+        return dynamic_offset_count;
     }
 }

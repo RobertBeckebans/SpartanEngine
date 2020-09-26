@@ -19,25 +19,29 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
+//= INCLUDES =========
+#include "Common.hlsl"
+//====================
+
 float3 Reinhard(float3 hdr, float k = 1.0f)
 {
-	return hdr / (hdr + k);
+    return hdr / (hdr + k);
 }
 
 float3 ReinhardInverse(float3 sdr, float k = 1.0)
 {
-	return k * sdr / (k - sdr);
+    return k * sdr / (k - sdr);
 }
 
 float3 Uncharted2(float3 x)
 {
     float A = 0.15;
-	float B = 0.50;
-	float C = 0.10;
-	float D = 0.20;
-	float E = 0.02;
-	float F = 0.30;
-	float W = 11.2;
+    float B = 0.50;
+    float C = 0.10;
+    float D = 0.20;
+    float E = 0.02;
+    float F = 0.30;
+    float W = 11.2;
     return ((x*(A*x+C*B)+D*E)/(x*(A*x+B)+D*F))-E/F;
 }
 
@@ -86,31 +90,40 @@ float3 ACESFitted(float3 color)
     return color;
 }
 
-float3 ToneMap(float3 color, float exposure = 1.0f)
+float3 ToneMap(float3 color)
 {
-	color *= exp(exposure);
-	
-	[branch]
+    [branch]
     if (g_toneMapping == 0) // OFF
     {
-		// Do nothing
+        // Do nothing
     }
-	else if (g_toneMapping == 1) // ACES
-	{
-		// attempting to match contrast levels
-        color = pow(abs(color), 0.833f);
+    else if (g_toneMapping == 1) // ACES
+    {
+        // attempting to match contrast levels
+        color = pow(abs(color), 0.75f);
         color *= 1.07f;
 
-		color = ACESFitted(color);
-	}
-	else if (g_toneMapping == 2) // REINHARD
-	{
-		color = Reinhard(color);
-	}
-	else if (g_toneMapping == 3) // UNCHARTED 2
-	{
-		color = Uncharted2(color);
-	}
-	
-	return color;
+        color = ACESFitted(color);
+    }
+    else if (g_toneMapping == 2) // REINHARD
+    {
+        color = Reinhard(color);
+    }
+    else if (g_toneMapping == 3) // UNCHARTED 2
+    {
+        color = Uncharted2(color);
+    }
+    
+    return color;
+}
+
+[numthreads(thread_group_count_x, thread_group_count_y, 1)]
+void mainCS(uint3 thread_id : SV_DispatchThreadID)
+{
+    if (thread_id.x >= uint(g_resolution.x) || thread_id.y >= uint(g_resolution.y))
+        return;
+    
+    float4 color = tex[thread_id.xy];
+    color = float4(ToneMap(color.rgb), color.a);
+    tex_out_rgba[thread_id.xy] = color;
 }

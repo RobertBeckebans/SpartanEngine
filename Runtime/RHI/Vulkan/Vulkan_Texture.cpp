@@ -19,18 +19,17 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= IMPLEMENTATION ===============
-#ifdef API_GRAPHICS_VULKAN
+//= INCLUDES ========================
+#include "Spartan.h"
 #include "../RHI_Implementation.h"
-//================================
-
-//= INCLUDES =====================
 #include "../RHI_Device.h"
 #include "../RHI_Texture2D.h"
 #include "../RHI_TextureCube.h"
-#include "../../Math/MathHelper.h"
 #include "../RHI_CommandList.h"
-//================================
+#include "../../Profiling/Profiler.h"
+#include "../../Rendering/Renderer.h"
+#include "../RHI_DescriptorCache.h"
+//===================================
 
 //= NAMESPACES ===============
 using namespace std;
@@ -39,268 +38,404 @@ using namespace Spartan::Math;
 
 namespace Spartan
 {
+    inline void set_debug_name(RHI_Texture* texture)
+    {
+        string name = texture->GetName();
+
+        // If a name hasn't been defined, try to make a reasonable one
+        if (name.empty())
+        {
+            if (texture->IsSampled())
+            {
+                name += name.empty() ? "sampled" : "-sampled";
+            }
+
+            if (texture->IsDepthStencil())
+            {
+                name += name.empty() ? "depth_stencil" : "-depth_stencil";
+            }
+
+            if (texture->IsRenderTarget())
+            {
+                name += name.empty() ? "render_target" : "-render_target";
+            }
+
+        }
+
+        vulkan_utility::debug::set_name(static_cast<VkImage>(texture->Get_Resource()), name.c_str());
+        vulkan_utility::debug::set_name(static_cast<VkImageView>(texture->Get_Resource_View(0)), name.c_str());
+        if (texture->IsSampled() && texture->IsStencilFormat())
+        {
+            vulkan_utility::debug::set_name(static_cast<VkImageView>(texture->Get_Resource_View(1)), name.c_str());
+        }
+    }
+
+    inline bool copy_to_staging_buffer(RHI_Texture* texture, std::vector<VkBufferImageCopy>& buffer_image_copies, void*& staging_buffer)
+    {
+        if (!texture->HasData())
+        {
+            LOG_WARNING("No data to stage");
+            return true;
+        }
+
+        const uint32_t width            = texture->GetWidth();
+        const uint32_t height           = texture->GetHeight();
+        const uint32_t array_size       = texture->GetArraySize();
+        const uint32_t mip_levels       = texture->GetMipCount();
+        const uint32_t bytes_per_pixel  = texture->GetBytesPerPixel();
+
+        // Fill out VkBufferImageCopy structs describing the array and the mip levels   
+        VkDeviceSize buffer_offset = 0;
+        for (uint32_t array_index = 0; array_index < array_size; array_index++)
+        {
+            for (uint32_t mip_index = 0; mip_index < mip_levels; mip_index++)
+            {
+                uint32_t mip_width  = width >> mip_index;
+                uint32_t mip_height = height >> mip_index;
+
+                VkBufferImageCopy region                = {};
+                region.bufferOffset                        = buffer_offset;
+                region.bufferRowLength                    = 0;
+                region.bufferImageHeight                = 0;
+                region.imageSubresource.aspectMask      = vulkan_utility::image::get_aspect_mask(texture);
+                region.imageSubresource.mipLevel        = mip_index;
+                region.imageSubresource.baseArrayLayer    = array_index;
+                region.imageSubresource.layerCount        = array_size;
+                region.imageOffset                        = { 0, 0, 0 };
+                region.imageExtent                        = { mip_width, mip_height, 1 };
+
+                buffer_image_copies[mip_index] = region;
+
+                // Update staging buffer memory requirement (in bytes)
+                buffer_offset += mip_width * mip_height * bytes_per_pixel;
+            }
+        }
+
+        // Create staging buffer
+        VmaAllocation allocation = vulkan_utility::buffer::create(staging_buffer, buffer_offset, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        // Copy array and mip level data to the staging buffer
+        void* data = nullptr;
+        buffer_offset = 0;
+        if (vulkan_utility::error::check(vmaMapMemory(vulkan_utility::globals::rhi_context->allocator, allocation, &data)))
+        {
+            for (uint32_t array_index = 0; array_index < array_size; array_index++)
+            {
+                for (uint32_t mip_index = 0; mip_index < mip_levels; mip_index++)
+                {
+                    uint64_t buffer_size = (width >> mip_index) * (height >> mip_index) * bytes_per_pixel;
+                    memcpy(static_cast<std::byte*>(data) + buffer_offset, texture->GetMip(array_index + mip_index).data(), buffer_size);
+                    buffer_offset += buffer_size;
+                }
+            }
+
+            vmaUnmapMemory(vulkan_utility::globals::rhi_context->allocator, allocation);
+        }
+
+        return true;
+    }
+
+    inline bool stage(RHI_Texture* texture, RHI_Image_Layout& texture_layout)
+    {
+        // Copy the texture's data to a staging buffer
+        void* staging_buffer = nullptr;
+        std::vector<VkBufferImageCopy> buffer_image_copies(texture->GetMipCount());
+        if (!copy_to_staging_buffer(texture, buffer_image_copies, staging_buffer))
+            return false;
+
+        // Copy the staging buffer into the image
+        if (VkCommandBuffer cmd_buffer = vulkan_utility::command_buffer_immediate::begin(RHI_Queue_Graphics))
+        {
+            // Optimal layout for images which are the destination of a transfer format
+            RHI_Image_Layout layout = RHI_Image_Transfer_Dst_Optimal;
+
+            // Transition to layout
+            if (!vulkan_utility::image::set_layout(cmd_buffer, texture, layout))
+                return false;
+
+            // Copy the staging buffer to the image
+            vkCmdCopyBufferToImage(
+                cmd_buffer,
+                static_cast<VkBuffer>(staging_buffer),
+                static_cast<VkImage>(texture->Get_Resource()),
+                vulkan_image_layout[layout],
+                static_cast<uint32_t>(buffer_image_copies.size()),
+                buffer_image_copies.data()
+            );
+
+            // End/flush
+            if (!vulkan_utility::command_buffer_immediate::end(RHI_Queue_Graphics))
+                return false;
+
+            // Free staging buffer
+            vulkan_utility::buffer::destroy(staging_buffer);
+
+            // Let the texture know about it's new layout
+            texture_layout = layout;
+        }
+
+        return true;
+    }
+
+    inline RHI_Image_Layout GetAppropriateLayout(RHI_Texture* texture)
+    {
+        RHI_Image_Layout target_layout = RHI_Image_Preinitialized;
+
+        if (texture->IsSampled() && texture->IsColorFormat())
+            target_layout = RHI_Image_Shader_Read_Only_Optimal;
+
+        if (texture->IsRenderTarget())
+            target_layout = RHI_Image_Color_Attachment_Optimal;
+
+        if (texture->IsDepthStencil())
+            target_layout = RHI_Image_Depth_Stencil_Attachment_Optimal;
+
+        if (texture->IsStorage())
+            target_layout = RHI_Image_General;
+
+        return target_layout;
+    }
+
     RHI_Texture2D::~RHI_Texture2D()
+    {
+        if (!m_rhi_device || !m_rhi_device->IsInitialized())
+        {
+            LOG_ERROR("Invalid RHI Device.");
+        }
+
+        // Ensure the GPU is not using this texture
+        m_rhi_device->Queue_WaitAll();
+        
+        // Make sure that no descriptor sets refer to this texture.
+        // Right now I just reset the descriptor cache, which works but it's not ideal.
+        // Todo: Get only the referring descriptor sets, and simply update the slot this texture is bound to.
+        if (Renderer* renderer = m_rhi_device->GetContext()->GetSubsystem<Renderer>())
+        {
+            if (RHI_DescriptorCache* descriptor_cache = renderer->GetDescriptorCache())
+            {
+                descriptor_cache->Reset();
+            }
+        }
+
+        // De-allocate everything
+        m_data.clear();
+        vulkan_utility::image::view::destroy(m_resource_view[0]);
+        vulkan_utility::image::view::destroy(m_resource_view[1]);
+        for (uint32_t i = 0; i < rhi_max_render_target_count; i++)
+        {
+            vulkan_utility::image::view::destroy(m_resource_view_depthStencil[i]);
+            vulkan_utility::image::view::destroy(m_resource_view_renderTarget[i]);
+        }
+        vulkan_utility::image::destroy(this);
+    }
+
+    void RHI_Texture::SetLayout(const RHI_Image_Layout new_layout, RHI_CommandList* command_list /*= nullptr*/)
+    {
+        // The texture is most likely still initialising
+        if (m_layout == RHI_Image_Undefined)
+            return;
+
+        if (m_layout == new_layout)
+            return;
+
+         // If a command list is provided, this means we should insert a pipeline barrier
+        if (command_list)
+        {
+            if (!vulkan_utility::image::set_layout(static_cast<VkCommandBuffer>(command_list->GetResource_CommandBuffer()), this, new_layout))
+                return;
+
+            m_context->GetSubsystem<Profiler>()->m_rhi_pipeline_barriers++;
+        }
+
+        m_layout = new_layout;
+    }
+
+    bool RHI_Texture2D::CreateResourceGpu()
+    {
+        // Create image
+        if (!vulkan_utility::image::create(this))
+        {
+            LOG_ERROR("Failed to create image");
+            return false;
+        }
+
+        // If the texture has any data, stage it
+        if (HasData())
+        {
+            if (!stage(this, m_layout))
+            {
+                LOG_ERROR("Failed to stage");
+                return false;
+            }
+        }
+
+        // Transition to target layout
+        if (VkCommandBuffer cmd_buffer = vulkan_utility::command_buffer_immediate::begin(RHI_Queue_Graphics))
+        {    
+            RHI_Image_Layout target_layout = GetAppropriateLayout(this);
+                
+            // Transition to the final layout
+            if (!vulkan_utility::image::set_layout(cmd_buffer, this, target_layout))
+            {
+                LOG_ERROR("Failed to transition layout");
+                return false;
+            }
+        
+            // Flush
+            if (!vulkan_utility::command_buffer_immediate::end(RHI_Queue_Graphics))
+            {
+                LOG_ERROR("Failed to end command buffer");
+                return false;
+            }
+
+            // Update this texture with the new layout
+            m_layout = target_layout;
+        }
+
+        // Create image views
+        {
+            // Shader resource views
+            if (IsSampled())
+            {
+                if (IsColorFormat())
+                {
+                    if (!vulkan_utility::image::view::create(m_resource, m_resource_view[0], this))
+                        return false;
+                }
+
+                if (IsDepthFormat())
+                {
+                    if (!vulkan_utility::image::view::create(m_resource, m_resource_view[0], this, 0, m_array_size, true, false))
+                        return false;
+                }
+
+                if (IsStencilFormat())
+                {
+                    if (!vulkan_utility::image::view::create(m_resource, m_resource_view[1], this, 0, m_array_size, false, true))
+                        return false;
+                }
+            }
+
+            // Render target views
+            for (uint32_t i = 0; i < m_array_size; i++)
+            {
+                if (IsRenderTarget())
+                {
+                    if (!vulkan_utility::image::view::create(m_resource, m_resource_view_renderTarget[i], this, i, 1))
+                        return false;
+                }
+
+                if (IsDepthStencil())
+                {
+                    if (!vulkan_utility::image::view::create(m_resource, m_resource_view_depthStencil[i], this, i, 1, true))
+                        return false;
+                }
+            }
+
+            // Name the image and image view(s)
+            set_debug_name(this);
+        }
+
+        return true;
+    }
+
+    // TEXTURE CUBE
+
+    RHI_TextureCube::~RHI_TextureCube()
     {
         if (!m_rhi_device->IsInitialized())
             return;
 
         m_rhi_device->Queue_WaitAll();
         m_data.clear();
-        const auto rhi_context = m_rhi_device->GetContextRhi();
-        vulkan_common::image::view::destroy(rhi_context, m_view_texture[0]);
-        vulkan_common::image::view::destroy(rhi_context, m_view_texture[1]);
-        vulkan_common::image::view::destroy(rhi_context, m_view_attachment_depth_stencil);
-        vulkan_common::frame_buffer::destroy(rhi_context, m_view_attachment_color);
-        vulkan_common::image::destroy(rhi_context, m_texture);
-		vulkan_common::memory::free(m_rhi_device->GetContextRhi(), m_resource_memory);
-	}
 
-    void RHI_Texture::SetLayout(const RHI_Image_Layout layout, RHI_CommandList* command_list /*= nullptr*/)
-    {
-        if (m_layout == layout)
-            return;
-
-        if (command_list)
+        vulkan_utility::image::view::destroy(m_resource_view[0]);
+        vulkan_utility::image::view::destroy(m_resource_view[1]);
+        for (uint32_t i = 0; i < rhi_max_render_target_count; i++)
         {
-            if (!vulkan_common::image::set_layout(m_rhi_device.get(), static_cast<VkCommandBuffer>(command_list->GetResource_CommandBuffer()), this, layout))
-                return;
+            vulkan_utility::image::view::destroy(m_resource_view_depthStencil[i]);
+            vulkan_utility::image::view::destroy(m_resource_view_renderTarget[i]);
         }
-
-        m_layout = layout;
+        vulkan_utility::image::destroy(this);
     }
 
-	bool RHI_Texture2D::CreateResourceGpu()
-	{
-        const RHI_Context* rhi_context = m_rhi_device->GetContextRhi();
-
-        // Get format support
-        VkFormatFeatureFlags feature_flag   = IsRenderTargetDepthStencil() ? VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT;
-        VkImageTiling image_tiling          = vulkan_common::image::is_format_supported(rhi_context, m_format, feature_flag);
-
-        // If the format is not supported, early exit
-        if (image_tiling == VK_IMAGE_TILING_MAX_ENUM)
-        {
-            LOG_ERROR("GPU does not support the usage of %s as a %s.", rhi_format_to_string(m_format), IsRenderTargetDepthStencil() ? "depth-stencil attachment" : "color attachment");
-            return false;
-        }
-
-        // If the format is not optimal, let the user know
-        if (image_tiling != VK_IMAGE_TILING_OPTIMAL)
-        {
-            LOG_ERROR("Format %s does not support optimal tiling, considering switching to a more efficient format.", rhi_format_to_string(m_format));
-            return false;
-        }
-
-        // Initialize
-        SetLayout(RHI_Image_Preinitialized);
-        bool use_staging    = !m_data.empty();
-        auto image          = reinterpret_cast<VkImage*>(&m_texture);
-        auto image_memory   = reinterpret_cast<VkDeviceMemory*>(&m_resource_memory);
-
-        // Deduce usage flags
-        VkImageUsageFlags usage_flags = 0;
-        {
-            usage_flags |= (m_flags & RHI_Texture_ShaderView)          ? VK_IMAGE_USAGE_SAMPLED_BIT                    : 0;
-            usage_flags |= (m_flags & RHI_Texture_DepthStencilView)    ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT   : 0;
-            usage_flags |= (m_flags & RHI_Texture_RenderTargetView)    ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT           : 0;
-            if (use_staging)
-            {
-                usage_flags |= use_staging ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0; // source of a transfer command.
-                usage_flags |= use_staging ? VK_IMAGE_USAGE_TRANSFER_DST_BIT : 0; // destination of a transfer command.
-            }
-        }
-
+    bool RHI_TextureCube::CreateResourceGpu()
+    {
         // Create image
+        if (!vulkan_utility::image::create(this))
         {
-            if (!vulkan_common::image::create(rhi_context, *image, m_width, m_height, m_mip_levels, m_array_size, vulkan_format[m_format], image_tiling, m_layout, usage_flags))
-            {
-                LOG_ERROR("Failed to create image");
-                return false;
-            }
-
-            if (!vulkan_common::image::allocate_bind(rhi_context, *image, image_memory))
-            {
-                LOG_ERROR("Failed to allocate and bind image memory");
-                return false;
-            }
+            LOG_ERROR("Failed to create image");
+            return false;
         }
 
-        // Create command buffer (for later layout transitioning)
-        VkCommandBuffer cmd_buffer = vulkan_common::command_buffer_immediate::begin(m_rhi_device.get(), RHI_Queue_Graphics);
-
-        // Use staging if needed
-        void* stating_buffer        = nullptr;
-        void* staging_buffer_memory = nullptr;
-        if (use_staging)
+        // If the texture has any data, stage it
+        if (HasData())
         {
-            // Create buffer copy structs for each mip level
-            vector<VkBufferImageCopy> buffer_image_copies(m_mip_levels);
-            vector<uint64_t> mip_memory(m_array_size * m_mip_levels);
-            VkDeviceSize buffer_size = 0;
-            uint64_t offset = 0;
-            for (uint32_t array_index = 0; array_index < m_array_size; array_index++)
-            {
-                for (uint32_t mip_index = 0; mip_index < m_mip_levels; mip_index++)
-                {
-                    uint32_t mip_width  = m_width >> mip_index;
-                    uint32_t mip_height = m_height >> mip_index;
-
-                    VkBufferImageCopy region				= {};
-                    region.bufferOffset						= offset;
-                    region.bufferRowLength					= 0;
-                    region.bufferImageHeight				= 0;
-                    region.imageSubresource.aspectMask      = vulkan_common::image::get_aspect_mask(this);
-                    region.imageSubresource.mipLevel		= mip_index;
-                    region.imageSubresource.baseArrayLayer	= array_index;
-                    region.imageSubresource.layerCount		= m_array_size;
-                    region.imageOffset						= { 0, 0, 0 };
-                    region.imageExtent						= { mip_width, mip_height, 1 };
-
-                    buffer_image_copies[mip_index] = region;
-
-                    // Update offset
-                    offset += static_cast<uint32_t>(m_data[mip_index].size());
-
-                    // Update memory requirements
-                    uint64_t memory_required = mip_width * mip_height * m_channels * (m_bpc / 8);
-                    mip_memory[array_index + mip_index] = memory_required;
-                    buffer_size += memory_required;
-                }
-            }
-            
-            // Create staging buffer
-            if (!vulkan_common::buffer::create(
-                rhi_context,
-                stating_buffer,
-                staging_buffer_memory,
-                buffer_size,
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-            )) return false;
-
-            // Copy mip levels to buffer
-            void* data = nullptr;
-            offset = 0;
-            if (vulkan_common::error::check(vkMapMemory(rhi_context->device, static_cast<VkDeviceMemory>(staging_buffer_memory), 0, buffer_size, 0, &data)))
-            {
-                for (uint32_t array_index = 0; array_index < m_array_size; array_index++)
-                {
-                    for (uint32_t mip_level = 0; mip_level < m_mip_levels; mip_level++)
-                    {
-                        uint32_t index = array_index + mip_level;
-                        memcpy(static_cast<byte*>(data) + offset, m_data[index].data(), mip_memory[index]);
-                        offset += mip_memory[index];
-                    }
-                }
-
-                vkUnmapMemory(rhi_context->device, static_cast<VkDeviceMemory>(staging_buffer_memory));
-            }
-
-            // Transition to RHI_Image_Transfer_Dst_Optimal
-            RHI_Image_Layout copy_layout = RHI_Image_Transfer_Dst_Optimal;
-            if (!vulkan_common::image::set_layout(m_rhi_device.get(), cmd_buffer, this, copy_layout))
+            if (!stage(this, m_layout))
                 return false;
-
-            // Update layout
-            m_layout = copy_layout;
-
-            // Copy buffer to texture
-            vkCmdCopyBufferToImage(
-                cmd_buffer,
-                *reinterpret_cast<VkBuffer*>(&stating_buffer),
-                static_cast<VkImage>(Get_Texture()),
-                vulkan_image_layout[copy_layout],
-                static_cast<uint32_t>(buffer_image_copies.size()),
-                buffer_image_copies.data()
-            );
         }
 
         // Transition to target layout
+        if (VkCommandBuffer cmd_buffer = vulkan_utility::command_buffer_immediate::begin(RHI_Queue_Graphics))
         {
-            // Deduce target layout
-            RHI_Image_Layout target_layout = m_layout;
+            RHI_Image_Layout target_layout = GetAppropriateLayout(this);
 
-            if (IsSampled() && IsColorFormat())
-                target_layout = RHI_Image_Shader_Read_Only_Optimal;
-
-            if (IsRenderTargetColor())
-                target_layout = RHI_Image_Color_Attachment_Optimal;
-
-            if (IsRenderTargetDepthStencil())
-                target_layout = RHI_Image_Depth_Stencil_Attachment_Optimal;
-
-            // Transition
-            if (!vulkan_common::image::set_layout(m_rhi_device.get(), cmd_buffer, this, target_layout))
+            // Transition to the final layout
+            if (!vulkan_utility::image::set_layout(cmd_buffer, this, target_layout))
                 return false;
 
             // Flush
-            if (!vulkan_common::command_buffer_immediate::end(RHI_Queue_Graphics))
+            if (!vulkan_utility::command_buffer_immediate::end(RHI_Queue_Graphics))
                 return false;
 
-            // Update layout
+            // Update this texture with the new layout
             m_layout = target_layout;
         }
 
-        // Free staging resources (must happen after we flush the command buffer
-        vulkan_common::buffer::destroy(rhi_context, stating_buffer);
-        vulkan_common::memory::free(rhi_context, staging_buffer_memory);
-
         // Create image views
         {
-            string name = GetResourceName();
-
-            // Sampled
+            // Shader resource views
             if (IsSampled())
             {
-                name += name.empty() ? "sampled" : "-sampled";
-
-                // Unlike D3D11, Vulkan doesn't support a single view for a depth-stencil buffer, so we have to create a separate one for the stencil
-
-                if (IsColorFormat() || IsDepthFormat())
+                if (IsColorFormat())
                 {
-                    if (!vulkan_common::image::view::create(rhi_context, *image, m_view_texture[0], this, true))
+                    if (!vulkan_utility::image::view::create(m_resource, m_resource_view[0], this))
+                        return false;
+                }
+
+                if (IsDepthFormat())
+                {
+                    if (!vulkan_utility::image::view::create(m_resource, m_resource_view[0], this, 0, m_array_size, true, false))
                         return false;
                 }
 
                 if (IsStencilFormat())
                 {
-                    if (!vulkan_common::image::view::create(rhi_context, *image, m_view_texture[1], this, false, true))
+                    if (!vulkan_utility::image::view::create(m_resource, m_resource_view[1], this, 0, m_array_size, false, true))
                         return false;
                 }
             }
 
-            // Color and depth-stencil
-            if (IsRenderTargetColor() || IsRenderTargetDepthStencil())
+            // Render target views
+            for (uint32_t i = 0; i < m_array_size; i++)
             {
-                name += name.empty() ? "render_target" : "-render_target";
-                // Unlike D3D11, Vulkan uses a framebuffer instead instead of dedicated views for attachments, so nothing to do here
+                if (IsRenderTarget())
+                {
+                    if (!vulkan_utility::image::view::create(m_resource, m_resource_view_renderTarget[i], this, i, 1))
+                        return false;
+                }
+
+                if (IsDepthStencil())
+                {
+                    if (!vulkan_utility::image::view::create(m_resource, m_resource_view_depthStencil[i], this, i, 1, true))
+                        return false;
+                }
             }
 
-            // Name the image and image view
-            vulkan_common::debug::set_image_name(rhi_context->device, *image, name.c_str());
-            vulkan_common::debug::set_image_view_name(rhi_context->device, static_cast<VkImageView>(m_view_texture[0]), name.c_str());
-            if (IsSampled() && IsStencilFormat())
-            {
-                vulkan_common::debug::set_image_view_name(rhi_context->device, static_cast<VkImageView>(m_view_texture[1]), name.c_str());
-            }
+            // Name the image and image view(s)
+            set_debug_name(this);
         }
 
-		return true;
-	}
-
-	// TEXTURE CUBE
-
-	RHI_TextureCube::~RHI_TextureCube()
-	{
-		m_data.clear();
-        vkDestroyImageView(m_rhi_device->GetContextRhi()->device, reinterpret_cast<VkImageView>(m_view_texture), nullptr);
-		vkDestroyImage(m_rhi_device->GetContextRhi()->device, reinterpret_cast<VkImage>(m_texture), nullptr);
-		vulkan_common::memory::free(m_rhi_device->GetContextRhi(), m_resource_memory);
-	}
-
-	bool RHI_TextureCube::CreateResourceGpu()
-	{
-		return true;
-	}
+        return true;
+    }
 }
-#endif

@@ -19,14 +19,11 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= IMPLEMENTATION ===============
-#ifdef API_GRAPHICS_VULKAN
+//= INCLUDES =====================
+#include "Spartan.h"
 #include "../RHI_Implementation.h"
-//================================
-
-//= INCLUDES ==================
 #include "../RHI_InputLayout.h"
-//=============================
+//================================
 
 //==================
 using namespace std;
@@ -34,7 +31,6 @@ using namespace std;
 
 namespace Spartan
 {
-	RHI_InputLayout::~RHI_InputLayout() {}
-	bool RHI_InputLayout::_CreateResource(void* vertex_shader_blob) { return true; }
+    RHI_InputLayout::~RHI_InputLayout() {}
+    bool RHI_InputLayout::_CreateResource(void* vertex_shader_blob) { return true; }
 }
-#endif

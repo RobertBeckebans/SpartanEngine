@@ -21,69 +21,74 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ==========
+//= INCLUDES ======================
 #include <vector>
-#include "RHI_Object.h"
-//=====================
+#include "../Core/Spartan_Object.h"
+//=================================
 
 namespace Spartan
 {
-	class RHI_VertexBuffer : public RHI_Object
-	{
-	public:
-		RHI_VertexBuffer(const std::shared_ptr<RHI_Device>& rhi_device, const uint32_t stride = 0) 
-		{
-			m_rhi_device	= rhi_device;
-			m_stride		= stride;
-		}
+    class RHI_VertexBuffer : public Spartan_Object
+    {
+    public:
+        RHI_VertexBuffer(const std::shared_ptr<RHI_Device>& rhi_device, const uint32_t stride = 0) 
+        {
+            m_rhi_device    = rhi_device;
+            m_stride        = stride;
+        }
 
-		~RHI_VertexBuffer();
+        ~RHI_VertexBuffer()
+        {
+            _destroy();
+        }
 
-		template<typename T>
-		bool Create(const std::vector<T>& vertices)
-		{
-			m_stride        = static_cast<uint32_t>(sizeof(T));
-			m_vertex_count	= static_cast<uint32_t>(vertices.size());
+        template<typename T>
+        bool Create(const std::vector<T>& vertices)
+        {
+            m_stride        = static_cast<uint32_t>(sizeof(T));
+            m_vertex_count    = static_cast<uint32_t>(vertices.size());
             m_size_gpu      = static_cast<uint64_t>(m_stride * m_vertex_count);
-			return _Create(static_cast<const void*>(vertices.data()));
-		}
+            return _create(static_cast<const void*>(vertices.data()));
+        }
 
-		template<typename T>
-		bool Create(const T* vertices, const uint32_t vertex_count)
-		{
-			m_stride        = static_cast<uint32_t>(sizeof(T));
-			m_vertex_count	= vertex_count;
+        template<typename T>
+        bool Create(const T* vertices, const uint32_t vertex_count)
+        {
+            m_stride        = static_cast<uint32_t>(sizeof(T));
+            m_vertex_count    = vertex_count;
             m_size_gpu      = static_cast<uint64_t>(m_stride * m_vertex_count);
-			return _Create(static_cast<const void*>(vertices));
-		}
+            return _create(static_cast<const void*>(vertices));
+        }
 
-		template<typename T>
-		bool CreateDynamic(const uint32_t vertex_count)
-		{
-			m_stride        = static_cast<uint32_t>(sizeof(T));
-			m_vertex_count  = vertex_count;
+        template<typename T>
+        bool CreateDynamic(const uint32_t vertex_count)
+        {
+            m_stride        = static_cast<uint32_t>(sizeof(T));
+            m_vertex_count  = vertex_count;
             m_size_gpu      = static_cast<uint64_t>(m_stride * m_vertex_count);
-			return _Create(nullptr);
-		}
+            return _create(nullptr);
+        }
 
-		void* Map() const;
-		bool Unmap() const;
-        bool Flush() const;
+        void* Map();
+        bool Unmap();
 
-		void* GetResource()         const { return m_buffer; }
+        void* GetResource()         const { return m_buffer; }
         uint32_t GetStride()        const { return m_stride; }
         uint32_t GetVertexCount()   const { return m_vertex_count; }
 
-	private:
-		bool _Create(const void* vertices);
+    private:
+        bool _create(const void* vertices);
+        void _destroy();
 
-		uint32_t m_stride			= 0;
-		uint32_t m_vertex_count		= 0;
+        bool m_persistent_mapping   = true; // only affects Vulkan
+        void* m_mapped              = nullptr;
+        uint32_t m_stride            = 0;
+        uint32_t m_vertex_count        = 0;
 
-		// API
-		std::shared_ptr<RHI_Device> m_rhi_device;
-		void* m_buffer			= nullptr;
-		void* m_buffer_memory	= nullptr;
-        bool m_mappable         = false;
-	};
+        // API
+        std::shared_ptr<RHI_Device> m_rhi_device;
+        void* m_buffer        = nullptr;
+        void* m_allocation  = nullptr;
+        bool m_is_mappable  = true;
+    };
 }

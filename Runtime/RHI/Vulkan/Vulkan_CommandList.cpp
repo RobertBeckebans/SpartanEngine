@@ -154,8 +154,9 @@ namespace Spartan
 
         vkCmdResetQueryPool(static_cast<VkCommandBuffer>(m_cmd_buffer), static_cast<VkQueryPool>(m_query_pool), 0, m_max_timestamps);
 
-        m_cmd_state = RHI_CommandListState::Recording;
-        m_flushed   = false;
+        m_cmd_state                     = RHI_CommandListState::Recording;
+        m_flushed                       = false;
+        m_processed_semaphore_submited  = false;
         return true;
     }
 
@@ -227,6 +228,11 @@ namespace Spartan
         )
         return false;
 
+        if (signal_semaphore)
+        {
+            m_processed_semaphore_submited = true;
+        }
+
         m_cmd_state = RHI_CommandListState::Submitted;
         return true;
     }
@@ -261,6 +267,12 @@ namespace Spartan
 
     bool RHI_CommandList::BeginRenderPass(RHI_PipelineState& pipeline_state)
     {
+        if (m_cmd_state != RHI_CommandListState::Recording)
+        {
+            LOG_WARNING("Command list must be in a recording state");
+            return false;
+        }
+
         // Get pipeline
         {
             m_pipeline_active = false;
